@@ -826,3 +826,19 @@ body.selecting .main { padding-bottom: calc(150px + var(--safe-b)); }
   .home-actions .narrow-icon-xs { width: 42px; padding: 0; }
   .home-actions .narrow-icon-xs span { display: none; }
 }
+
+/* ---------- v1.9: groups in Add songs, smoother swipe ---------- */
+.add-tabs { margin-top: 10px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.add-tabs::-webkit-scrollbar { display: none; }
+.add-tabs button { flex: none; }
+.art.sm.round { border-radius: 50%; }
+.art.sm.liked-art { display: grid; place-items: center; }
+.art.sm.liked-art svg { width: 50%; height: 50%; }
+.row.is-partial .check { border-color: #fff; background: rgba(255, 255, 255, .25); }
+
+/* While a panel is dragged, drop the expensive effects and animations. */
+.now.swiping, .sheet.swiping { animation: none !important; will-change: transform; }
+.sheet.swiping { backdrop-filter: none; -webkit-backdrop-filter: none; background: color-mix(in srgb, var(--tint-deep) 55%, #121218); }
+.now.swiping *, .sheet.swiping * { transition: none !important; }
+.swipe-settle { transition: transform .22s cubic-bezier(.2, .8, .2, 1) !important; }
+.np-bg-img { will-change: transform; }

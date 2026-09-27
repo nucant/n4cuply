@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -480,7 +480,7 @@ function renderAlbum(a) {
       <header class="page-hero">
         <div class="page-top">
           <button class="round-btn" type="button" data-action="back" aria-label="Back">${ICON.back}</button>
-          <button class="round-btn" type="button" data-action="album-info" data-key="${esc(a.key)}" aria-label="Album info">${ICON.more}</button>
+          <button class="round-btn" type="button" data-action="collection" data-kind="album" data-id="${esc(a.key)}" aria-label="Album options">${ICON.more}</button>
         </div>
         <div class="art hero-art" data-cover="${esc(a.cover)}" data-seed="${esc(a.name)}"></div>
         <h1>${esc(a.name)}</h1>
@@ -533,7 +533,7 @@ function renderArtist(ar) {
         <div class="art artist-blur" data-cover="${esc(photo || ar.cover)}" data-seed="${esc(ar.name)}" aria-hidden="true"></div>
         <div class="art artist-photo" data-cover="${esc(photo || ar.cover)}" data-seed="${esc(ar.name)}"></div>
         <div class="artist-shade"></div>
-        <div class="page-top"><button class="round-btn" type="button" data-action="back" aria-label="Back">${ICON.back}</button><span></span></div>
+        <div class="page-top"><button class="round-btn" type="button" data-action="back" aria-label="Back">${ICON.back}</button><button class="round-btn" type="button" data-action="collection" data-kind="artist" data-id="${esc(ar.name)}" aria-label="Artist options">${ICON.more}</button></div>
         <div class="artist-name">
           <p class="eyebrow">Artist</p>
           <h1>${esc(ar.name)}</h1>
@@ -1663,7 +1663,7 @@ function renderPlaylist(id) {
       <header class="page-hero">
         <div class="page-top">
           <button class="round-btn" type="button" data-action="back" aria-label="Back">${ICON.back}</button>
-          ${isLikedList ? '<span></span>' : `<button class="round-btn" type="button" data-action="playlist-menu" data-id="${esc(id)}" aria-label="Playlist options">${ICON.more}</button>`}
+          <button class="round-btn" type="button" data-action="collection" data-kind="playlist" data-id="${esc(id)}" aria-label="Playlist options">${ICON.more}</button>
         </div>
         ${isLikedList ? `<div class="art hero-art liked-art">${ICON.heartFill}</div>` : `<div class="art hero-art" data-cover="${esc(tracks[0]?.cover || '')}" data-seed="${esc(name)}"></div>`}
         <h1>${esc(name)}</h1>
@@ -2266,20 +2266,112 @@ function wireLongPress() {
   $('#selbar').addEventListener('click', onSelbar);
 }
 
+// ================= groups: albums, artists, folders, playlists =================
+/** Every folder that holds songs (directly or in sub-folders), with its songs. */
+function folderGroups() {
+  const byPath = new Map();
+  for (const t of lib.tracks) {
+    const parts = String(t.path || '').split(' / ');
+    for (let i = 1; i <= parts.length; i++) {
+      const p = parts.slice(0, i).join(' / ');
+      if (!byPath.has(p)) byPath.set(p, []);
+      byPath.get(p).push(t);
+    }
+  }
+  return [...byPath].map(([path, tracks]) => ({ id: 'folder:' + path, name: path.split(' / ').pop(), sub: path, tracks }))
+    .sort((a, b) => a.sub.localeCompare(b.sub));
+}
+
+function groupsFor(tab) {
+  if (tab === 'albums') return lib.albums.map((a) => ({ id: 'album:' + a.key, name: a.name, sub: a.artist || '', cover: a.cover, tracks: a.tracks }));
+  if (tab === 'artists') return lib.artists.map((a) => ({ id: 'artist:' + a.name, name: a.name, sub: '', cover: artistPhoto(a.name) || a.cover, tracks: a.tracks, round: true }));
+  if (tab === 'folders') return folderGroups();
+  if (tab === 'playlists') {
+    const out = [{ id: 'liked', name: 'Liked songs', sub: '', tracks: likedTracks(), liked: true }];
+    for (const p of playlists()) if (p.id !== addSongs.playlistId) out.push({ id: 'pl:' + p.id, name: p.name, sub: '', cover: playlistTracks(p)[0]?.cover || '', tracks: playlistTracks(p) });
+    return out;
+  }
+  return [];
+}
+
+/** Songs of a collection page (album, artist, playlist, liked). */
+function collectionTracks(kind, id) {
+  if (kind === 'album') return lib.albumsById[id]?.tracks || [];
+  if (kind === 'artist') return lib.artists.find((a) => a.name === id)?.tracks || [];
+  if (kind === 'playlist') return id === 'liked' ? likedTracks() : playlistTracks(playlists().find((p) => p.id === id) || { keys: [] });
+  return [];
+}
+
+function openCollectionMenu(kind, id) {
+  const tracks = collectionTracks(kind, id);
+  const name = kind === 'album' ? lib.albumsById[id]?.name : kind === 'artist' ? id : id === 'liked' ? 'Liked songs' : playlists().find((p) => p.id === id)?.name;
+  const item = (act, icon, label) => `<button class="menu-item" type="button" data-coll="${act}">${icon}<span>${label}</span></button>`;
+  const html = `
+    <p class="info-note first">${plural(tracks.length, 'song')}</p>
+    <div class="menu-list" data-kind="${esc(kind)}" data-id="${esc(id)}">
+      ${item('playlist', ICON.plus, 'Add all to a playlist…')}
+      ${item('next', ICON.playNext, 'Play next')}
+      ${item('queue', ICON.queue, 'Add to queue')}
+      ${kind !== 'playlist' || id !== 'liked' ? item('like', ICON.heart, 'Like all songs') : ''}
+      ${item('select', ICON.check, 'Select songs…')}
+      ${kind === 'album' ? item('info', ICON.info, 'Album info') : ''}
+      ${kind === 'playlist' && id !== 'liked' ? item('edit', ICON.pencil, 'Rename, add songs or delete…') : ''}
+    </div>`;
+  openSheet('collection', name || 'Songs', html);
+}
+
+function onCollectionEvent(e) {
+  if (sheetKind !== 'collection' || e.type !== 'click') return;
+  const btn = e.target.closest('[data-coll]');
+  if (!btn) return;
+  const box = btn.closest('.menu-list');
+  const { kind, id } = box.dataset;
+  const tracks = collectionTracks(kind, id);
+  const act = btn.dataset.coll;
+  if (act === 'playlist') { openPlaylistPicker(tracks.map((t) => t.id)); return; }
+  if (act === 'info') { openAlbumInfo(id); return; }
+  if (act === 'edit') { openPlaylistMenu(id); return; }
+  closeSheet();
+  if (act === 'next') { withAuth(() => player.enqueue(tracks, { next: true })); toast(`${plural(tracks.length, 'song')} play next.`); }
+  if (act === 'queue') { withAuth(() => player.enqueue(tracks)); toast(`Added ${plural(tracks.length, 'song')} to the queue.`); }
+  if (act === 'like') { const n = likeMany(tracks.map((t) => t.key)); toast(n ? `Added ${plural(n, 'song')} to Liked songs.` : 'Already liked.'); }
+  if (act === 'select') setTimeout(() => startSelect(), 250);
+}
+
 // ================= add songs to a playlist (bulk) =================
-const addSongs = { playlistId: '', picked: new Set(), q: '' };
+const addSongs = { playlistId: '', picked: new Set(), q: '', tab: 'songs' };
 
 function openAddSongs(playlistId, push = true) {
   const pl = playlists().find((p) => p.id === playlistId);
   if (!pl) return;
-  if (addSongs.playlistId !== playlistId) Object.assign(addSongs, { playlistId, picked: new Set(), q: '' });
+  if (addSongs.playlistId !== playlistId) Object.assign(addSongs, { playlistId, picked: new Set(), q: '', tab: 'songs' });
   const inList = new Set(pl.keys);
   const q = addSongs.q.toLowerCase();
   const has = (s) => String(s || '').toLowerCase().includes(q);
-  const list = lib.tracks.filter((t) => !q || has(t.title) || has(t.artist) || has(t.album));
   const n = addSongs.picked.size;
-  const html = `
-    <input id="add-search" class="set-input" type="search" placeholder="Search songs, artists, albums" value="${esc(addSongs.q)}" autocomplete="off">
+  const tabs = [['songs', 'Songs'], ['albums', 'Albums'], ['artists', 'Artists'], ['folders', 'Folders'], ['playlists', 'Playlists']];
+  const tabBar = `<div class="seg small add-tabs" role="tablist">${tabs.map(([k, label]) => `<button type="button" role="tab" aria-selected="${addSongs.tab === k}" class="${addSongs.tab === k ? 'on' : ''}" data-add="tab" data-tab="${k}">${label}</button>`).join('')}</div>`;
+  const footer = `<div class="add-footer"><button class="pill-btn light" type="button" data-add="save" ${n ? '' : 'disabled'}>${n ? `Add ${plural(n, 'song')}` : 'Select songs to add'}</button></div>`;
+  const search = `<input id="add-search" class="set-input" type="search" placeholder="Search" value="${esc(addSongs.q)}" autocomplete="off">`;
+  if (addSongs.tab !== 'songs') {
+    const groups = groupsFor(addSongs.tab).filter((g) => g.tracks.length && (!q || has(g.name) || has(g.sub)));
+    const html = `${search}${tabBar}
+      <div class="add-tools"><span>${plural(groups.length, addSongs.tab.replace(/s$/, ''))}${q ? ' found' : ''} · tap to select all its songs</span></div>
+      <div class="rows add-rows">${groups.slice(0, 300).map((g) => {
+        const addable = g.tracks.filter((t) => !inList.has(t.key));
+        const on = addable.length > 0 && addable.every((t) => addSongs.picked.has(t.key));
+        const some = !on && addable.some((t) => addSongs.picked.has(t.key));
+        return `<button class="row pick ${on ? 'is-selected' : ''} ${some ? 'is-partial' : ''} ${addable.length ? '' : 'already'}" type="button" data-add="group" data-keys="${esc(addable.map((t) => t.key).join('\n'))}" ${addable.length ? '' : 'disabled'}>
+          <span class="check" aria-hidden="true"></span>
+          ${g.liked ? `<span class="art sm liked-art">${ICON.heartFill}</span>` : `<span class="art sm ${g.round ? 'round' : ''}" data-cover="${esc(g.cover || '')}" data-seed="${esc(g.name)}"></span>`}
+          <span class="row-text"><b>${esc(g.name)}</b><small>${esc([g.sub && g.sub !== g.name ? g.sub : '', plural(g.tracks.length, 'song'), addable.length < g.tracks.length ? `${g.tracks.length - addable.length} already added` : ''].filter(Boolean).join(' · '))}</small></span>
+        </button>`;
+      }).join('')}</div>${footer}`;
+    openSheet('add-songs', `Add to "${pl.name}"`, html, push);
+    return;
+  }
+  const list = lib.tracks.filter((t) => !q || has(t.title) || has(t.artist) || has(t.album));
+  const html = `${search}${tabBar}
     <div class="add-tools">
       <span>${plural(list.length, 'song')}${q ? ' found' : ''}</span>
       <button class="text-btn" type="button" data-add="all">${list.every((t) => inList.has(t.key) || addSongs.picked.has(t.key)) ? 'Clear' : 'Select all'}</button>
@@ -2292,8 +2384,7 @@ function openAddSongs(playlistId, push = true) {
         <span class="art sm" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></span>
         <span class="row-text"><b>${esc(t.title)}</b><small>${esc(already ? 'Already in this playlist' : [t.artist, t.album].filter(Boolean).join(' · '))}</small></span>
       </button>`;
-    }).join('')}</div>
-    <div class="add-footer"><button class="pill-btn light" type="button" data-add="save" ${n ? '' : 'disabled'}>${n ? `Add ${plural(n, 'song')}` : 'Select songs to add'}</button></div>`;
+    }).join('')}</div>${footer}`;
   openSheet('add-songs', `Add to "${pl.name}"`, html, push);
 }
 
@@ -2315,6 +2406,24 @@ function onAddSongsEvent(e) {
   const btn = e.target.closest('[data-add]');
   if (!btn || btn.disabled) return;
   const act = btn.dataset.add;
+  if (act === 'tab') {
+    addSongs.tab = btn.dataset.tab;
+    openAddSongs(addSongs.playlistId, false);
+    $('#sheet-body').scrollTop = 0;
+    return;
+  }
+  if (act === 'group') {
+    const keys = btn.dataset.keys.split('\n').filter(Boolean);
+    const all = keys.every((k) => addSongs.picked.has(k));
+    for (const k of keys) { if (all) addSongs.picked.delete(k); else addSongs.picked.add(k); }
+    btn.classList.toggle('is-selected', !all);
+    btn.classList.remove('is-partial');
+    const n = addSongs.picked.size;
+    const save = $('#sheet-body [data-add="save"]');
+    save.disabled = !n;
+    save.textContent = n ? `Add ${plural(n, 'song')}` : 'Select songs to add';
+    return;
+  }
   if (act === 'toggle') {
     const k = btn.dataset.key;
     if (addSongs.picked.has(k)) addSongs.picked.delete(k); else addSongs.picked.add(k);
@@ -2608,6 +2717,7 @@ function wireStaticUi() {
     else if (action === 'allow-local') allowLocal(el.dataset.src);
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
+    else if (action === 'collection') openCollectionMenu(el.dataset.kind, el.dataset.id);
     else if (action === 'select') { if (sel.on) endSelect(); else startSelect(); }
     else if (action === 'add-songs') openAddSongs(el.dataset.id);
     else if (action === 'new-playlist') { openPlaylistPicker([]); $('#sheet-title').textContent = 'New playlist'; }
@@ -2638,6 +2748,7 @@ function wireStaticUi() {
   body.addEventListener('submit', onPlaylistMenuEvent);
   body.addEventListener('click', onSleepEvent);
   body.addEventListener('click', onAddSongsEvent);
+  body.addEventListener('click', onCollectionEvent);
   body.addEventListener('input', onAddSongsEvent);
   body.addEventListener('submit', onEditEvent);
   body.addEventListener('submit', onFixEvent);
@@ -2827,54 +2938,69 @@ document.addEventListener('pointerdown', (e) => {
 }, { capture: true, passive: true });
 
 // Swipe down to close Now Playing and bottom sheets (phones).
+// Only moves the panel (a GPU transform, one update per frame) and pauses
+// blur effects while dragging; changing opacity or moving blurred glass
+// every frame is what made it lag.
 function swipeToClose(el, { canStart, onClose }) {
   let y0 = 0;
   let x0 = 0;
   let t0 = 0;
   let dy = 0;
+  let lastY = 0;
+  let lastT = 0;
+  let vel = 0;
+  let frame = 0;
   let mode = ''; // '' undecided, 'drag', 'ignore'
-  const reset = () => {
-    el.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1), opacity .25s ease';
-    el.style.transform = '';
-    el.style.opacity = '';
-    setTimeout(() => { el.style.transition = ''; }, 260);
+  const paint = () => {
+    frame = 0;
+    el.style.transform = `translate3d(0, ${dy}px, 0)`;
+  };
+  const finish = (close) => {
+    el.classList.add('swipe-settle');
+    el.style.transform = close ? `translate3d(0, ${window.innerHeight}px, 0)` : '';
+    setTimeout(() => {
+      el.classList.remove('swipe-settle', 'swiping');
+      if (close) { onClose(); el.style.transform = ''; }
+    }, close ? 200 : 240);
   };
   el.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1 || e.target.closest('input[type=range], .np-volume, .spectro, .shelf')) { mode = 'ignore'; return; }
-    y0 = e.touches[0].clientY;
+    if (e.touches.length !== 1 || e.target.closest('input[type=range], .np-volume, .spectro, .shelf, .selbar-actions, .add-tabs')) { mode = 'ignore'; return; }
+    y0 = lastY = e.touches[0].clientY;
     x0 = e.touches[0].clientX;
-    t0 = performance.now();
+    t0 = lastT = performance.now();
     dy = 0;
+    vel = 0;
     mode = canStart(e) ? '' : 'ignore';
   }, { passive: true });
   el.addEventListener('touchmove', (e) => {
     if (mode === 'ignore') return;
-    const y = e.touches[0].clientY - y0;
+    const cy = e.touches[0].clientY;
+    const y = cy - y0;
     const x = e.touches[0].clientX - x0;
     if (!mode) {
-      if (Math.abs(y) < 8 && Math.abs(x) < 8) return;
-      mode = y > 0 && y > Math.abs(x) * 1.2 ? 'drag' : 'ignore';
+      if (Math.abs(y) < 6 && Math.abs(x) < 6) return;
+      mode = y > 0 && y > Math.abs(x) ? 'drag' : 'ignore';
       if (mode !== 'drag') return;
+      el.classList.add('swiping');
     }
-    dy = Math.max(0, y);
     e.preventDefault();
-    el.style.transition = 'none';
-    el.style.transform = `translateY(${dy}px)`;
-    el.style.opacity = String(Math.max(0.35, 1 - dy / (window.innerHeight * 1.2)));
+    const now = performance.now();
+    vel = (cy - lastY) / Math.max(1, now - lastT);
+    lastY = cy;
+    lastT = now;
+    dy = Math.max(0, y);
+    if (!frame) frame = requestAnimationFrame(paint);
   }, { passive: false });
-  el.addEventListener('touchend', () => {
+  const end = () => {
     if (mode !== 'drag') { mode = ''; return; }
     mode = '';
-    const speed = dy / Math.max(1, performance.now() - t0);
-    if (dy > 120 || (dy > 40 && speed > 0.6)) {
-      el.style.transition = 'transform .22s ease-in, opacity .22s ease-in';
-      el.style.transform = `translateY(${window.innerHeight}px)`;
-      el.style.opacity = '0';
-      setTimeout(() => { onClose(); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }, 200);
-    } else {
-      reset();
-    }
-  });
+    cancelAnimationFrame(frame);
+    frame = 0;
+    finish(dy > window.innerHeight * 0.22 || (dy > 30 && vel > 0.5));
+  };
+  el.addEventListener('touchend', end);
+  el.addEventListener('touchcancel', end);
+  void t0;
 }
 
 swipeToClose($('#now'), {
