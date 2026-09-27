@@ -1277,3 +1277,34 @@ body.layout-phone .dash-gallery { scroll-padding-inline: 16px; }
 body.on-dash.has-rail .mini { display: none; }
 body.on-dash.has-rail.has-mini .main { padding-bottom: 24px; }
 body.on-dash.has-rail.has-mini .dash { min-height: calc(100dvh - 40px - var(--safe-t)); }
+
+/* ---------- v2.4: Signal panel on the dashboard's artwork card ---------- */
+.dash-visual { cursor: default; }
+.dash-visual:active { transform: none; }
+.dash-visual-shade { background: linear-gradient(180deg, rgba(0, 0, 0, .3) 0%, transparent 22%, rgba(8, 9, 14, .55) 45%, rgba(8, 9, 14, .96) 72%); }
+.dash-visual-top { justify-content: space-between; }
+.dash-sig { background: rgba(0, 0, 0, .45) !important; color: #fff !important; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.dash-sig svg { color: var(--dash-cyan); }
+.dash-signal {
+  position: absolute; left: 14px; right: 14px; bottom: 14px; display: grid; gap: 12px;
+  padding: 14px; border-radius: 20px; background: rgba(12, 14, 20, .58);
+  border: 1px solid rgba(255, 255, 255, .07); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+.dash-viz { width: 100%; height: 56px; display: block; }
+.dash-signal .dash-lyric { font-size: clamp(18px, 1.9vw, 24px); }
+.sig-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sig-chips span {
+  padding: 4px 9px; border-radius: 8px; background: rgba(255, 255, 255, .08); font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: .01em;
+}
+.sig-chips .hi { background: rgba(34, 211, 238, .16); color: #8fe6ff; }
+.sig-chips .lo { background: rgba(77, 141, 255, .18); color: #a9c6ff; }
+.sig-grid { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; }
+.sig-grid div { min-width: 0; }
+.sig-grid dt { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.sig-grid dd { margin: 1px 0 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sig-live { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11.5px; color: var(--text-3); font-weight: 600; }
+.sig-live span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--dash-cyan); margin-right: 6px; vertical-align: 1px; box-shadow: 0 0 8px var(--dash-cyan); }
+.sig-empty { color: var(--text-2); font-size: 13px; line-height: 1.5; }
+body.layout-phone .dash-visual { min-height: 460px; }
+body.layout-phone .sig-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

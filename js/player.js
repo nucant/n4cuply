@@ -54,6 +54,7 @@ function gainFactor(track) {
 // iPhone Safari ignores <audio>.volume, so element volume can't fade there.
 let ctx = null;
 const gains = [null, null];
+let analyserNode = null;
 
 function useGainNodes() {
   if (ctx) return true;
@@ -61,9 +62,15 @@ function useGainNodes() {
   if (!Ctx) return false;
   try {
     ctx = new Ctx();
+    analyserNode = ctx.createAnalyser();
+    analyserNode.fftSize = 512;
+    analyserNode.smoothingTimeConstant = 0.78;
+    analyserNode.minDecibels = -92;
+    analyserNode.maxDecibels = -18; // headroom so loud masters don't pin every bar
+    analyserNode.connect(ctx.destination);
     decks.forEach((d, i) => {
       const g = ctx.createGain();
-      ctx.createMediaElementSource(d).connect(g).connect(ctx.destination);
+      ctx.createMediaElementSource(d).connect(g).connect(analyserNode);
       gains[i] = g;
     });
     return true;
@@ -71,6 +78,19 @@ function useGainNodes() {
     ctx = null;
     return false;
   }
+}
+
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/**
+ * Analyser for the visualizer. On iPhone/iPad it's only available when Web
+ * Audio is already on (crossfade / normalization), because routing audio
+ * through it there can stop music when the screen locks.
+ */
+function getAnalyser() {
+  if (analyserNode) return analyserNode;
+  if (isIOS || !A().src || A().paused) return null;
+  return useGainNodes() ? (applyVolume(), analyserNode) : null;
 }
 
 function needGainNodes() {
@@ -678,6 +698,8 @@ function setReplayGain(mode) {
 
 export const player = {
   get audio() { return A(); },
+  getAnalyser,
+  get source() { return target?.mode || ''; },
   _decks: decks, // for debugging only
   state,
   current,

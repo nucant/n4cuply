@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.3'; // keep in sync with version.json
+const APP_VERSION = '2.4'; // keep in sync with version.json
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -63,6 +63,7 @@ const ICON = {
   gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v8.5a1.5 1.5 0 01-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 014 19.5z"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  signal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v4M8 10v8M12 6v12M16 11v7M20 8v10"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -188,13 +189,42 @@ function renderDashboard() {
         </button>`).join('')}</div>
     </section>
 
-    <section class="dash-card dash-visual" data-action="dash-open">
+    <section class="dash-card dash-visual">
       <span class="art dash-visual-art" data-cover="${esc(t?.cover || lib.albums[0]?.cover || '')}" data-seed="${esc(t?.album || 'N4cuply')}"></span>
       <div class="dash-visual-shade"></div>
-      <div class="dash-visual-top">${m ? `<span class="dash-pill">${esc(qualityBadge(m))}</span>` : ''}</div>
-      <div class="dash-visual-text">
+      <div class="dash-visual-top">
+        <span class="dash-pill dash-sig">${ICON.signal}Signal</span>
+        ${m ? `<span class="dash-pill">${esc(qualityBadge(m))}</span>` : ''}
+      </div>
+      <div class="dash-signal">
+        <canvas id="dash-viz" class="dash-viz" width="560" height="96" aria-hidden="true"></canvas>
         ${lyric ? `<p class="dash-lyric">${esc(lyric)}</p>` : ''}
-        <small>${esc(m ? techLine(m) : 'N4cuply')}</small>
+        ${m && !m.error ? `
+          <div class="sig-chips">
+            <span>${esc(m.codec || m.format)}</span>
+            ${m.bitrate ? `<span>${m.bitrate} kbps${m.bitrateMode && m.bitrateMode !== 'Lossless' ? ' ' + esc(m.bitrateMode) : ''}</span>` : ''}
+            ${m.sampleRate ? `<span>${(m.sampleRate / 1000).toFixed(1)} kHz</span>` : ''}
+            ${m.bitDepth ? `<span>${m.bitDepth}-bit</span>` : ''}
+            ${m.channelMode ? `<span>${esc(m.channelMode)}</span>` : ''}
+            ${m.hiRes ? '<span class="hi">Hi-Res</span>' : m.lossless ? '<span class="lo">Lossless</span>' : ''}
+          </div>
+          <dl class="sig-grid">
+            ${sigCell('Track', t.trackNo ? `${t.trackNo}${first(m, 'TRACKTOTAL') ? ' / ' + first(m, 'TRACKTOTAL') : ''}${t.discNo > 1 ? ' · disc ' + t.discNo : ''}` : '')}
+            ${sigCell('Year', t.year)}
+            ${sigCell('Genre', t.genre)}
+            ${sigCell('BPM · Key', [first(m, 'BPM'), first(m, 'INITIALKEY')].filter(Boolean).join(' · '))}
+            ${sigCell('ReplayGain', first(m, 'REPLAYGAIN_TRACK_GAIN'))}
+            ${sigCell('Duration', m.duration ? fmtExact(m.duration).replace(/(\.\d)\d+$/, '$1') : '')}
+            ${sigCell('File', `${t.ext} · ${fmtSize(t.size)}`)}
+            ${sigCell('Encoder', m.lamePreset ? 'LAME ' + m.lamePreset : m.encoder ? m.encoder.split(' ').slice(0, 3).join(' ') : '')}
+            ${sigCell('Plays', plays[t.key] ? String(plays[t.key]) : 'First time')}
+          </dl>
+          <div class="sig-live">
+            <span id="sig-src">${player.source === 'stream' ? 'Streaming from Drive' : t.src?.startsWith('l') ? 'Local file on this PC' : 'Loaded from Drive'}</span>
+            <span id="sig-buf"></span>
+            ${player.state.crossfade ? `<span>Crossfade ${player.state.crossfade}s</span>` : ''}
+            ${player.state.sleepAt ? '<span>Sleep timer on</span>' : ''}
+          </div>` : `<small class="sig-empty">${t ? esc(t.ext) : 'Play a song to see its signal: codec, sample rate, bit depth, tags and a live spectrum.'}</small>`}
       </div>
     </section>
 
@@ -230,6 +260,61 @@ function renderDashboard() {
   </div>`;
 }
 
+function sigCell(label, value) {
+  return value ? `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>` : '';
+}
+
+// Live spectrum on the dashboard (real audio where allowed, a gentle animation otherwise).
+let vizFrame = 0;
+let vizFake = null;
+function drawViz() {
+  cancelAnimationFrame(vizFrame);
+  const canvas = document.getElementById('dash-viz');
+  if (!canvas) return;
+  const g = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const bars = 40;
+  const an = player.getAnalyser();
+  const data = an ? new Uint8Array(an.frequencyBinCount) : null;
+  if (!vizFake) vizFake = Array.from({ length: bars }, () => Math.random());
+  const grad = g.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, '#4d8dff');
+  grad.addColorStop(0.55, '#6f6bff');
+  grad.addColorStop(1, '#22d3ee');
+  const tick = () => {
+    if (!canvas.isConnected) return;
+    g.clearRect(0, 0, W, H);
+    const playing = !player.audio.paused;
+    const gap = 4;
+    const bw = (W - gap * (bars - 1)) / bars;
+    if (an && data) an.getByteFrequencyData(data);
+    for (let i = 0; i < bars; i++) {
+      let v;
+      if (an && data) {
+        // Log-spaced bins so bass doesn't swamp the picture.
+        const lo = Math.floor(Math.pow(data.length * 0.9, i / bars));
+        const hi = Math.max(lo + 1, Math.floor(Math.pow(data.length * 0.9, (i + 1) / bars)));
+        let sum = 0;
+        for (let k = lo; k < hi; k++) sum += data[k];
+        v = sum / (hi - lo) / 255;
+      } else {
+        vizFake[i] += (Math.random() - 0.5) * 0.18;
+        vizFake[i] = Math.min(1, Math.max(0.08, vizFake[i]));
+        v = playing ? vizFake[i] * (0.55 + 0.45 * Math.sin(performance.now() / 380 + i * 0.5) ** 2) : 0.06;
+      }
+      const h = Math.max(3, v * H);
+      g.fillStyle = grad;
+      g.beginPath();
+      if (g.roundRect) g.roundRect(i * (bw + gap), H - h, bw, h, Math.min(3, bw / 2));
+      else g.rect(i * (bw + gap), H - h, bw, h);
+      g.fill();
+    }
+    vizFrame = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
 function updateDashboardTime() {
   const bar = document.getElementById('dash-bar');
   if (!bar) return;
@@ -240,6 +325,12 @@ function updateDashboardTime() {
   const left = document.getElementById('dash-left');
   if (cur) cur.textContent = fmt(a.currentTime);
   if (left) left.textContent = '-' + fmt(Math.max(0, d - a.currentTime));
+  const buf = document.getElementById('sig-buf');
+  if (buf && d) {
+    let end = 0;
+    for (let i = 0; i < a.buffered.length; i++) if (a.buffered.start(i) <= a.currentTime + 1) end = Math.max(end, a.buffered.end(i));
+    buf.textContent = `Buffered ${Math.round(Math.min(1, end / d) * 100)}%`;
+  }
 }
 
 setInterval(() => {
@@ -774,6 +865,7 @@ function render() {
   else html = renderHome(['album', 'artist', 'playlist'].includes(r.name) ? 'albums' : r.name);
   if (!setMain(html)) { markPlaying(); if (sel.on) markSelected(); return; }
   hydrateArt(main);
+  if (document.getElementById('dash-viz')) drawViz();
   if (sel.on) markSelected();
   const page = main.querySelector('[data-tint]');
   if (page) tintFromCover(page, page.dataset.tint, page.dataset.seed);
