@@ -650,6 +650,10 @@ async function parseFlac(reader, start) {
     } else if (type === 6) {
       const b = await reader.bytes(body, Math.min(len, 1024));
       const pic = parseFlacPicture(b);
+      if (pic && !(pic.w && pic.h)) {
+        // Some taggers leave width/height empty; read them from the image header.
+        Object.assign(pic, imageDims(await reader.bytes(body + pic.dataOff, Math.min(pic.dataLen, 64 * 1024))));
+      }
       if (pic) r.pictures.push({ ...pic, off: body + pic.dataOff, len: pic.dataLen });
     } else if (type === 3) {
       r.extra.push(['Seek table', `${Math.floor(len / 18)} points`]);

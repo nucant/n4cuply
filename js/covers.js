@@ -1,10 +1,12 @@
 // Album covers: fetched from Drive, resized and cached on the device, and
 // used to pick the theme tint.
-import { fetchBlob, fetchRange } from './drive.js';
+import { readBlob, readRange } from './sources.js';
+import { refFor } from './library.js';
 import { pickPicture } from './meta.js';
 import { idbGet, idbPut } from './store.js';
 
 const mem = new Map(); // coverId -> Promise<{url, color}|null>
+const ready = new Map(); // coverId -> {url, color} once loaded
 const MAX_EDGE = 720;
 
 /**
@@ -16,7 +18,7 @@ export function loadCover(coverId, getTrack) {
   if (!mem.has(coverId)) {
     const p = load(coverId, getTrack).catch(() => null);
     mem.set(coverId, p);
-    p.then((v) => { if (!v) mem.delete(coverId); });
+    p.then((v) => { if (v) ready.set(coverId, v); else mem.delete(coverId); });
   }
   return mem.get(coverId);
 }
@@ -36,16 +38,20 @@ async function load(coverId, getTrack) {
 
   let blob;
   if (kind === 'pic') {
-    let bytes = new Uint8Array(await fetchRange(id, pic.off, pic.off + pic.len - 1));
+    const t = getTrack(id);
+    let bytes = new Uint8Array(await readRange({ id: t.id, src: t.src }, pic.off, pic.off + pic.len - 1));
     if (pic.unsync) bytes = deUnsync(bytes);
     blob = new Blob([bytes], { type: pic.mime || 'image/jpeg' });
   } else {
-    blob = await fetchBlob(id);
+    blob = await readBlob(refFor(id));
   }
   const { small, color } = await shrinkAndColor(blob);
   idbPut('covers', cacheKey, { blob: small, color });
   return { url: URL.createObjectURL(small), color };
 }
+
+/** The cover if it's already loaded, so repaints don't flash a placeholder. */
+export const peekCover = (coverId) => ready.get(coverId) || null;
 
 function deUnsync(b) {
   const out = new Uint8Array(b.length);

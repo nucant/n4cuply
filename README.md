@@ -9,7 +9,9 @@ A private music player for your own songs. Your music stays in a private Google 
 - Synced lyrics from `.lrc` files, ID3 SYLT frames, or LRC timestamps inside the lyrics tag (word-by-word for enhanced LRC)
 - Colors taken from the album art, full-screen Now Playing, lock-screen and headphone controls
 - Upload songs, `.lrc` files and covers to your Drive from the app (drag and drop works too)
-- Settings: music folder, ReplayGain volume normalization, display options, storage, log out
+- Multiple sources: the default Drive folder plus up to 5 more (other folders, other Google accounts, or folders on your PC)
+- PC folders (Chrome/Edge on a computer) are picked once and remembered; the same song in Drive and on the PC shows once and plays from the PC
+- Settings: sources, ReplayGain volume normalization, display options, storage, accounts, log out
 - Installable on your phone's home screen
 
 Supported audio: FLAC, MP3, M4A (AAC/ALAC), WAV, OGG Vorbis, Opus.
@@ -36,7 +38,7 @@ Google Auth Platform → Clients → your client → **Authorised JavaScript ori
 - `http://localhost:8080` (local testing)
 - `https://nucant.github.io` (GitHub Pages)
 
-Audience → Test users must include your Gmail. The Google Drive API must be enabled.
+Audience → Test users must include every Gmail you sign in with (each extra account too). The Google Drive API must be enabled.
 
 Uploading asks once for permission to add files to your Drive; normal playback only uses read-only access.
 
@@ -49,7 +51,8 @@ Uploading asks once for permission to add files to your Drive; normal playback o
 | `js/auth.js` | Google sign-in |
 | `js/drive.js` | Drive API: list, read, upload |
 | `js/meta.js` | Tag and audio-format parser |
-| `js/library.js` | Folder scan → albums, songs, artists |
+| `js/sources.js` | Drive and PC sources, reading files from either |
+| `js/library.js` | Source scan → albums, songs, artists |
 | `js/lyrics.js` | LRC / SYLT lyrics and syncing |
 | `js/covers.js` | Cover loading and color extraction |
 | `js/player.js` | Playback, queue, shuffle, repeat, lock screen |

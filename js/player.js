@@ -1,8 +1,8 @@
 // Player engine: queue, shuffle, repeat, lock screen control.
 // Songs stream from Drive through the service worker (seeking works).
 // Without a service worker the whole file is downloaded, then played.
-import { accessToken } from './auth.js';
-import { fetchBlob, AuthError } from './drive.js';
+import { AuthError } from './drive.js';
+import { playTarget } from './sources.js';
 
 const STATE_KEY = 'mp.player.v1';
 const audio = new Audio();
@@ -49,15 +49,6 @@ function current() {
   return state.pos >= 0 ? state.queue[state.order[state.pos]] || null : null;
 }
 
-function canStream() {
-  return !!navigator.serviceWorker?.controller;
-}
-
-function streamUrl(track, token) {
-  const q = new URLSearchParams({ t: token, s: String(track.size || 0), m: track.mime || 'audio/mpeg' });
-  return `stream/${encodeURIComponent(track.id)}?${q}`;
-}
-
 function shuffled(list) {
   const a = list.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -101,6 +92,15 @@ function seekWhenReady(sec) {
 }
 
 // ---------- loading ----------
+let target = null; // how the current track is loaded (see sources.playTarget)
+
+function needAuth(t, startAt) {
+  resumeAt = startAt;
+  state.needsAuth = true;
+  setLoading(false);
+  bus.dispatchEvent(new CustomEvent('auth', { detail: t }));
+}
+
 function load(autoplay = true, startAt = 0) {
   const track = current();
   if (!track) return;
@@ -110,21 +110,19 @@ function load(autoplay = true, startAt = 0) {
   updateMediaSession();
   emit('change');
   save(true);
-
   applyVolume();
-  const token = accessToken();
-  if (!token) {
-    resumeAt = startAt;
-    state.needsAuth = true;
-    emit('auth');
+
+  target = playTarget(track);
+  if (target.mode === 'auth' || target.mode === 'local-permission') {
+    needAuth(target, startAt);
     return;
   }
   state.needsAuth = false;
   setLoading(true);
 
-  if (canStream()) {
+  if (target.mode === 'stream') {
     releaseBlob();
-    audio.src = streamUrl(track, token);
+    audio.src = target.url;
     seekWhenReady(startAt);
     if (autoplay) audio.play().catch(onPlayRejected);
     else setLoading(false);
@@ -135,7 +133,7 @@ function load(autoplay = true, startAt = 0) {
 
 async function loadBlob(track, id, autoplay, startAt) {
   try {
-    const blob = await fetchBlob(track.id);
+    const blob = await target.blob();
     if (id !== loadId) return;
     releaseBlob();
     blobUrl = URL.createObjectURL(blob);
@@ -147,9 +145,9 @@ async function loadBlob(track, id, autoplay, startAt) {
     if (id !== loadId) return;
     setLoading(false);
     if (e instanceof AuthError) {
-      resumeAt = startAt;
-      state.needsAuth = true;
-      emit('auth');
+      needAuth(playTarget(track), startAt);
+    } else if (e.name === 'NotAllowedError' && track.id.startsWith('local:')) {
+      needAuth(playTarget(track), startAt);
     } else if (e.name !== 'NotAllowedError') {
       fail(`Couldn't play "${track.title}". ${e.message || ''}`);
     }
@@ -186,13 +184,12 @@ audio.addEventListener('error', () => {
   if (!track || !audio.src) return;
   const at = audio.currentTime || 0;
   setLoading(false);
-  if (!accessToken()) {
-    resumeAt = at;
-    state.needsAuth = true;
-    emit('auth');
+  const now = playTarget(track);
+  if (now.mode === 'auth' || now.mode === 'local-permission') {
+    needAuth(now, at);
     return;
   }
-  if (!fellBack && !blobUrl) {
+  if (!fellBack && !blobUrl && target?.blob) {
     // Streaming failed: download the whole file and try again.
     fellBack = true;
     setLoading(true);

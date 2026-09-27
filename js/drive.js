@@ -8,8 +8,8 @@ const FILE_FIELDS = 'id,name,mimeType,size,md5Checksum,modifiedTime,parents';
 
 export class AuthError extends Error {}
 
-async function request(url, init = {}) {
-  const t = accessToken();
+async function request(url, init = {}, account) {
+  const t = accessToken(account);
   if (!t) throw new AuthError('Please sign in again.');
   const res = await fetch(url, { ...init, headers: { ...(init.headers || {}), Authorization: 'Bearer ' + t } });
   if (res.status === 401) throw new AuthError('Your session expired. Connect again.');
@@ -32,22 +32,22 @@ function withParams(path, params, base = API) {
   return url;
 }
 
-export async function getFolder(id) {
+export async function getFolder(id, account) {
   try {
     const res = await request(withParams('/files/' + encodeURIComponent(id), {
       fields: 'id,name,mimeType',
       supportsAllDrives: 'true',
-    }));
+    }), {}, account);
     return res.json();
   } catch (e) {
     if (e.status === 404) {
-      throw new Error("Music folder not found. Sign in with the Google account that owns the folder, or pick another folder in Settings.");
+      throw new Error(`Folder not found${account ? ' in ' + account : ''}. Sign in with the Google account that owns it, or pick another folder in Settings.`);
     }
     throw e;
   }
 }
 
-export async function listChildren(folderId) {
+export async function listChildren(folderId, account) {
   const out = [];
   let pageToken = '';
   do {
@@ -60,7 +60,7 @@ export async function listChildren(folderId) {
       includeItemsFromAllDrives: 'true',
     };
     if (pageToken) params.pageToken = pageToken;
-    const j = await (await request(withParams('/files', params))).json();
+    const j = await (await request(withParams('/files', params), {}, account)).json();
     out.push(...(j.files || []));
     pageToken = j.nextPageToken || '';
   } while (pageToken);
@@ -71,26 +71,26 @@ export function mediaUrl(id) {
   return `${API}/files/${encodeURIComponent(id)}?alt=media`;
 }
 
-export async function fetchBlob(id, signal) {
-  const res = await request(mediaUrl(id), { signal });
+export async function fetchBlob(id, account, signal) {
+  const res = await request(mediaUrl(id), { signal }, account);
   return res.blob();
 }
 
 /** Part of a file (start..end, both inclusive). */
-export async function fetchRange(id, start, end) {
-  const res = await request(mediaUrl(id), { headers: { Range: `bytes=${start}-${end}` } });
+export async function fetchRange(id, start, end, account) {
+  const res = await request(mediaUrl(id), { headers: { Range: `bytes=${start}-${end}` } }, account);
   const buf = await res.arrayBuffer();
   // If the server ignored the range and sent the whole file, cut out what we asked for.
   if (res.status === 200 && buf.byteLength > end - start + 1) return buf.slice(start, end + 1);
   return buf;
 }
 
-export async function createFolder(name, parentId) {
+export async function createFolder(name, parentId, account) {
   const res = await request(withParams('/files', { fields: FILE_FIELDS, supportsAllDrives: 'true' }), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=UTF-8' },
     body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
-  });
+  }, account);
   return res.json();
 }
 
@@ -98,7 +98,7 @@ export async function createFolder(name, parentId) {
  * Uploads one file with a resumable session so large FLACs work and we get
  * progress. onProgress(0..1). Resolves with the new file's metadata.
  */
-export async function uploadFile(file, parentId, onProgress, signal) {
+export async function uploadFile(file, parentId, account, onProgress, signal) {
   const init = await request(withParams('/files', { uploadType: 'resumable', fields: FILE_FIELDS, supportsAllDrives: 'true' }, UPLOAD_API), {
     method: 'POST',
     headers: {
@@ -107,7 +107,7 @@ export async function uploadFile(file, parentId, onProgress, signal) {
       'X-Upload-Content-Length': String(file.size),
     },
     body: JSON.stringify({ name: file.name, parents: [parentId] }),
-  });
+  }, account);
   const session = init.headers.get('Location');
   if (!session) throw new Error("Drive didn't start the upload. Try again.");
 

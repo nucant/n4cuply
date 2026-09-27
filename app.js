@@ -1,16 +1,22 @@
-import { initAuth, hasToken, canWrite, expiresSoon, signIn, signOut } from './js/auth.js';
-import { AuthError, fetchBlob, uploadFile, createFolder } from './js/drive.js';
 import {
-  scanFiles, loadFilesCache, clearCache, loadMetaCache, missingMeta, readMissingMeta, build,
+  initAuth, hasToken, canWrite, expiresSoon, signIn, signOut, primaryAccount, accountName, knownAccounts,
+} from './js/auth.js';
+import { AuthError, uploadFile, createFolder, getFolder } from './js/drive.js';
+import {
+  scanSource, loadScanCache, clearCache, loadMetaCache, missingMeta, readMissingMeta, build, refFor, LocalPermissionError,
 } from './js/library.js';
+import {
+  listSources, sourceById, accountOf, addDriveSource, addLocalSource, removeSource, canAddSource, MAX_EXTRA,
+  localSupported, localPermission, requestLocal, readBlob,
+} from './js/sources.js';
 import { first, techLine, qualityBadge, qualityTag } from './js/meta.js';
-import { loadCover, applyTint } from './js/covers.js';
+import { loadCover, peekCover, applyTint } from './js/covers.js';
 import { lyricsFor, activeLine } from './js/lyrics.js';
-import { settings, setSetting, musicFolderId, parseFolderInput } from './js/settings.js';
+import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -31,11 +37,16 @@ const ICON = {
   queue: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11M4 11h11M4 16h7"/><path class="fill" d="M16 13.5v7l5-3.5z"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>',
+  drive: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5h7l6 10.5-3.5 6h-12L2.5 14z"/><path d="M8.5 3.5l6.5 10.5h6.5M2.5 14h13l-3.5 6"/></svg>',
+  pc: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
   spinner: '<svg viewBox="0 0 24 24" class="spin" aria-hidden="true"><path d="M12 3a9 9 0 109 9"/></svg>',
 };
 
-let raw = null;
+const scans = {};    // srcId -> scan result
+const srcState = {}; // srcId -> { status: 'ok'|'scanning'|'error'|'auth'|'permission', error }
 let lib = null;
 let scanning = false;
 let scanCount = 0;
@@ -45,13 +56,21 @@ let lists = {};
 let installPrompt = null;
 let lastRefreshTry = 0;
 
+const allFiles = () => Object.values(scans).flatMap((sc) => sc.files);
+const hasScans = () => Object.keys(scans).length > 0;
+const defaultScan = () => scans.default || Object.values(scans)[0] || null;
+
 // ================= boot =================
 async function boot() {
   registerServiceWorker();
   wireStaticUi();
-  raw = loadFilesCache(musicFolderId());
-  if (raw) {
-    await loadMetaCache(raw.files);
+  for (const src of listSources()) {
+    const cached = loadScanCache(src);
+    if (cached) scans[src.id] = cached;
+    if (src.kind === 'local') localPermission(src.id).then((p) => { srcState[src.id] = { status: p === 'granted' ? 'ok' : 'permission' }; });
+  }
+  if (hasScans()) {
+    await loadMetaCache(allFiles());
     rebuild();
   }
 
@@ -64,8 +83,8 @@ async function boot() {
 
   if (hasToken()) {
     showApp();
-    refreshLibrary({ quiet: !!raw });
-  } else if (raw) {
+    refreshLibrary({ quiet: hasScans() });
+  } else if (hasScans()) {
     showApp();
     toast('Connect again to play your music.', { action: 'Connect', onAction: reconnect });
   } else {
@@ -108,13 +127,26 @@ async function connect() {
   }
 }
 
-async function reconnect() {
+async function reconnect(account) {
   try {
-    await signIn();
+    await signIn({ account: typeof account === 'string' ? account : '' });
     hideToast();
     player.resumeAfterAuth();
-    if (!raw || scanError) refreshLibrary();
+    const stale = listSources().filter((src) => ['auth', 'error'].includes(srcState[src.id]?.status));
+    if (!hasScans() || scanError || stale.length) refreshLibrary({ quiet: hasScans() });
     else runMetaScan();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+/** One click to let the app read a PC folder again (Chrome asks after restarts). */
+async function allowLocal(srcId) {
+  try {
+    if (!(await requestLocal(srcId))) { toast('Access was not allowed.'); return; }
+    hideToast();
+    player.resumeAfterAuth();
+    refreshLibrary({ quiet: true, only: srcId });
   } catch (e) {
     toast(e.message);
   }
@@ -122,43 +154,71 @@ async function reconnect() {
 
 // ================= library =================
 function rebuild() {
-  lib = build(raw);
+  lib = build(Object.values(scans));
   if (player.current()) player.relink(lib.tracksById);
   else player.restore(lib);
 }
 
-async function refreshLibrary({ quiet = false } = {}) {
+async function refreshLibrary({ quiet = false, only = '' } = {}) {
   if (scanning) return;
   scanning = true;
   scanCount = 0;
   scanError = '';
   if (!quiet || !lib) render();
-  try {
-    raw = await scanFiles(musicFolderId(), (n) => {
-      scanCount = n;
-      if (!lib) render();
-    });
-    await loadMetaCache(raw.files);
+  const counts = {};
+  const sources = listSources().filter((src) => !only || src.id === only);
+  const authNeeded = new Set();
+  await Promise.all(sources.map(async (src) => {
+    srcState[src.id] = { status: 'scanning' };
+    try {
+      scans[src.id] = await scanSource(src, (n) => {
+        counts[src.id] = n;
+        scanCount = Object.values(counts).reduce((a, b) => a + b, 0);
+        if (!lib) render();
+      });
+      srcState[src.id] = { status: 'ok' };
+    } catch (e) {
+      if (e instanceof AuthError) {
+        srcState[src.id] = { status: 'auth', error: e.message };
+        authNeeded.add(accountOf(src));
+      } else if (e instanceof LocalPermissionError) {
+        srcState[src.id] = { status: 'permission', error: e.message };
+      } else {
+        srcState[src.id] = { status: 'error', error: e.message || "Couldn't load this source." };
+      }
+    }
+  }));
+  // Drop cached results of sources that were removed.
+  const ids = new Set(listSources().map((src) => src.id));
+  for (const id of Object.keys(scans)) if (!ids.has(id)) delete scans[id];
+
+  if (hasScans()) {
+    await loadMetaCache(allFiles());
     rebuild();
-  } catch (e) {
-    if (e instanceof AuthError) toast(e.message, { action: 'Connect', onAction: reconnect });
-    else scanError = e.message || "Couldn't load your library.";
-  } finally {
-    scanning = false;
-    render();
+  } else {
+    scanError = srcState.default?.error || 'No music sources could be loaded.';
   }
-  if (!scanError && raw) runMetaScan();
+  if (authNeeded.size) {
+    const account = [...authNeeded][0];
+    toast(account === primaryAccount() ? 'Your session expired. Connect again.' : `Connect ${account} to load its music.`,
+      { action: 'Connect', onAction: () => reconnect(account) });
+  }
+  scanning = false;
+  render();
+  if (hasScans()) runMetaScan();
 }
 
 let rebuildTimer = 0;
 async function runMetaScan() {
-  if (metaRun || !raw) return;
-  const missing = missingMeta(raw.files);
+  if (metaRun || !hasScans()) return;
+  const files = allFiles();
+  const missing = missingMeta(files);
   if (!missing.length) return;
   metaRun = { done: 0, total: missing.length };
   renderScanBar();
+  let result = { blocked: [] };
   try {
-    await readMissingMeta(raw.files, (done, total) => {
+    result = await readMissingMeta(files, (done, total) => {
       metaRun = { done, total };
       renderScanBar();
       if (!rebuildTimer) {
@@ -166,18 +226,23 @@ async function runMetaScan() {
           rebuildTimer = 0;
           rebuild();
           render();
-        }, 1500);
+        }, 2500);
       }
     });
-  } catch (e) {
-    if (e instanceof AuthError) toast('Reading song info paused. Connect again.', { action: 'Connect', onAction: reconnect });
   } finally {
     metaRun = null;
     clearTimeout(rebuildTimer);
     rebuildTimer = 0;
+    renderScanBar();
     rebuild();
     render();
   }
+  for (const id of result.blocked) {
+    const src = sourceById(id);
+    if (!src) continue;
+    srcState[id] = { status: src.kind === 'local' ? 'permission' : 'auth' };
+  }
+  if (result.blocked.length) render();
 }
 
 // ================= routing =================
@@ -190,10 +255,18 @@ function route() {
   return { name: 'albums' };
 }
 
+const scrollMemory = new Map();
+let lastHash = location.hash;
 window.addEventListener('hashchange', () => {
+  scrollMemory.set(lastHash, window.scrollY);
+  lastHash = location.hash;
   closeSheet(false);
-  render();
-  window.scrollTo(0, 0);
+  const go = () => {
+    render();
+    window.scrollTo(0, scrollMemory.get(location.hash) || 0);
+  };
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(go);
+  else go();
 });
 
 window.addEventListener('popstate', () => {
@@ -203,25 +276,35 @@ window.addEventListener('popstate', () => {
 });
 
 // ================= render =================
+let lastHtml = '';
+function setMain(html) {
+  // Re-rendering identical markup would reset images and scroll; skip it.
+  if (html === lastHtml) return false;
+  lastHtml = html;
+  $('#main').innerHTML = html;
+  return true;
+}
+
 function render() {
   const main = $('#main');
   lists = {};
   const q = $('#q').value.trim().toLowerCase();
 
   if (!lib) {
-    main.innerHTML = scanError ? errorBlock(scanError) : scanningBlock();
+    setMain(scanError ? errorBlock(scanError) : scanningBlock());
     return;
   }
   if (!lib.tracks.length) {
-    main.innerHTML = scanError ? errorBlock(scanError) : `
+    setMain(scanError ? errorBlock(scanError) : `
+      ${noticesHtml()}
       <div class="empty">
         <h2>No songs yet</h2>
-        <p>Add FLAC, MP3, M4A, WAV or OGG files to "${esc(lib.rootName)}". Use sub-folders for albums.</p>
+        <p>Add FLAC, MP3, M4A, WAV or OGG files to "${esc(defaultScan()?.rootName || 'your music folder')}", or add another source in Settings. Use sub-folders for albums.</p>
         <div class="home-actions">
           <button class="pill-btn light" type="button" data-action="upload">${ICON.upload}<span>Upload songs</span></button>
           <button class="pill-btn" type="button" data-action="refresh">Check again</button>
         </div>
-      </div>`;
+      </div>`);
     return;
   }
 
@@ -231,7 +314,7 @@ function render() {
   else if (r.name === 'album' && lib.albumsById[r.id]) html = renderAlbum(lib.albumsById[r.id]);
   else if (r.name === 'artist' && lib.artists.find((a) => a.name === r.id)) html = renderArtist(lib.artists.find((a) => a.name === r.id));
   else html = renderHome(r.name === 'album' || r.name === 'artist' ? 'albums' : r.name);
-  main.innerHTML = html;
+  if (!setMain(html)) { markPlaying(); return; }
   hydrateArt(main);
   const page = main.querySelector('[data-tint]');
   if (page) tintFromCover(page, page.dataset.tint, page.dataset.seed);
@@ -255,8 +338,27 @@ function errorBlock(msg) {
       <div class="home-actions">
         <button class="pill-btn light" type="button" data-action="refresh">Try again</button>
         <button class="pill-btn" type="button" data-action="settings">Settings</button>
+        ${srcState.default?.status === 'auth' ? '<button class="pill-btn" type="button" data-action="connect">Connect</button>' : ''}
       </div>
     </div>`;
+}
+
+function noticesHtml() {
+  const items = listSources().map((src) => {
+    const st = srcState[src.id];
+    if (!st || !['auth', 'permission', 'error'].includes(st.status)) return '';
+    const name = src.kind === 'local' ? src.name : (scans[src.id]?.rootName || src.name || 'Drive folder');
+    const action = st.status === 'permission'
+      ? `<button class="pill-btn small light" type="button" data-action="allow-local" data-src="${esc(src.id)}">Allow access</button>`
+      : st.status === 'auth'
+        ? `<button class="pill-btn small light" type="button" data-action="connect" data-account="${esc(accountOf(src))}">Connect</button>`
+        : `<button class="pill-btn small" type="button" data-action="settings">Settings</button>`;
+    const text = st.status === 'permission' ? `Allow access to the PC folder "${esc(name)}" to play it.`
+      : st.status === 'auth' ? `Connect ${esc(accountOf(src))} to load "${esc(name)}".`
+        : `"${esc(name)}": ${esc(st.error || 'failed to load')}`;
+    return `<div class="notice">${ICON.alert}<span>${text}</span>${action}</div>`;
+  }).join('');
+  return items ? `<div class="notices">${items}</div>` : '';
 }
 
 function scanBarHtml() {
@@ -290,6 +392,7 @@ function renderHome(tab) {
   const head = `
     <section class="home-head">
       <h1>Library</h1>
+      ${noticesHtml()}
       <p class="home-stats">${plural(lib.tracks.length, 'song')} · ${plural(lib.albums.length, 'album')}${total ? ' · ' + fmtTotal(total) : ''}${nLossless ? ` · ${nLossless} lossless` : ''}${nHiRes ? ` · ${nHiRes} Hi-Res` : ''}</p>
       <nav class="seg" aria-label="Library">
         <a href="#albums" class="${tab === 'albums' ? 'on' : ''}">Albums</a>
@@ -463,6 +566,15 @@ function paintArt(el, seed, coverId) {
   el.style.setProperty('--h1', h % 360);
   el.style.setProperty('--h2', (h >> 9) % 360);
   if (coverId && el.dataset.want === coverId && el.classList.contains('has-img')) return loadCover(coverId, getTrack);
+  const ready = coverId && peekCover(coverId);
+  if (ready) {
+    el.dataset.want = coverId;
+    el.style.backgroundImage = `url("${ready.url}")`;
+    el.classList.add('has-img', 'instant');
+    el.innerHTML = '';
+    return Promise.resolve(ready);
+  }
+  el.classList.remove('instant');
   el.style.backgroundImage = '';
   el.classList.remove('has-img');
   el.innerHTML = `<span>${esc(initials(seed))}</span>`;
@@ -490,6 +602,7 @@ const artObserver = 'IntersectionObserver' in window
 
 function hydrateArt(root) {
   root.querySelectorAll('.art[data-seed]').forEach((el) => {
+    if (el.dataset.cover && peekCover(el.dataset.cover)) { paintArt(el, el.dataset.seed, el.dataset.cover); return; }
     const h = hash(el.dataset.seed || '');
     el.style.setProperty('--h1', h % 360);
     el.style.setProperty('--h2', (h >> 9) % 360);
@@ -586,11 +699,35 @@ function updatePlayState() {
 }
 
 let seeking = false;
+let rafId = 0;
+function progressLoop() {
+  // Smooth progress bars between the browser's ~4 per second time updates.
+  cancelAnimationFrame(rafId);
+  const step = () => {
+    if (player.audio.paused) return;
+    paintProgress();
+    rafId = requestAnimationFrame(step);
+  };
+  rafId = requestAnimationFrame(step);
+}
+
+function paintProgress() {
+  const a = player.audio;
+  const d = a.duration || player.current()?.duration || 0;
+  const pct = d > 0 ? a.currentTime / d : 0;
+  $('#mini-progress').style.transform = `scaleX(${pct.toFixed(4)})`;
+  if (nowOpen && !seeking) {
+    const seek = $('#seek');
+    seek.value = Math.round(pct * 1000);
+    seek.style.setProperty('--pct', (pct * 100).toFixed(2) + '%');
+  }
+}
+
 function updateTime() {
   const a = player.audio;
   const d = a.duration || player.current()?.duration || 0;
   const pct = d > 0 ? a.currentTime / d : 0;
-  $('#mini-progress').style.width = (pct * 100).toFixed(2) + '%';
+  $('#mini-progress').style.transform = `scaleX(${pct.toFixed(4)})`;
   const seek = $('#seek');
   if (!seeking) seek.value = Math.round(pct * 1000);
   seek.style.setProperty('--pct', (seek.value / 10) + '%');
@@ -604,7 +741,15 @@ let nowOpen = false;
 function setNowOpen(open, push = true) {
   if (open === nowOpen) return;
   nowOpen = open;
-  $('#now').hidden = !open;
+  const el = $('#now');
+  if (open) {
+    el.classList.remove('closing');
+    el.hidden = false;
+    updateTime();
+  } else {
+    el.classList.add('closing');
+    setTimeout(() => { if (!nowOpen) { el.hidden = true; el.classList.remove('closing'); } }, 260);
+  }
   document.body.classList.toggle('now-open', open);
   if (push && open) history.pushState({ now: true }, '');
   else if (push && !open && history.state?.now) history.back();
@@ -614,7 +759,7 @@ function setNowOpen(open, push = true) {
 const textCache = new Map();
 function loadText(id) {
   if (!textCache.has(id)) {
-    textCache.set(id, fetchBlob(id).then((b) => b.text()).catch((e) => { textCache.delete(id); throw e; }));
+    textCache.set(id, readBlob(refFor(id)).then((b) => b.text()).catch((e) => { textCache.delete(id); throw e; }));
   }
   return textCache.get(id);
 }
@@ -707,6 +852,8 @@ function openSheet(kind, title, html, push = true) {
   $('#sheet-title').textContent = title;
   $('#sheet-body').innerHTML = html;
   hydrateArt($('#sheet-body'));
+  $('#sheet').classList.remove('closing');
+  $('#sheet-scrim').classList.remove('closing');
   $('#sheet').hidden = false;
   $('#sheet-scrim').hidden = false;
   if (!wasOpen) $('#sheet-body').scrollTop = 0;
@@ -716,8 +863,17 @@ function openSheet(kind, title, html, push = true) {
 function closeSheet(pop = true) {
   if (!sheetKind) return;
   sheetKind = '';
-  $('#sheet').hidden = true;
-  $('#sheet-scrim').hidden = true;
+  const sheet = $('#sheet');
+  const scrim = $('#sheet-scrim');
+  sheet.classList.add('closing');
+  scrim.classList.add('closing');
+  setTimeout(() => {
+    if (sheetKind) return;
+    sheet.hidden = true;
+    scrim.hidden = true;
+    sheet.classList.remove('closing');
+    scrim.classList.remove('closing');
+  }, 220);
   if (pop && history.state?.sheet) history.back();
 }
 
@@ -860,6 +1016,28 @@ function openQueue(push = true) {
 }
 
 // ================= settings =================
+function sourceRow(src) {
+  const scan = scans[src.id];
+  const st = srcState[src.id]?.status;
+  const count = scan ? plural(scan.files.length, 'song') : '';
+  const name = src.kind === 'local' ? src.name : (scan?.rootName || src.name || 'Drive folder');
+  const where = src.kind === 'local' ? 'This PC' : (accountOf(src) || 'Google Drive');
+  const status = st === 'scanning' ? 'Scanning…' : st === 'auth' ? 'Needs sign-in' : st === 'permission' ? 'Needs permission'
+    : st === 'error' ? (srcState[src.id].error || 'Failed') : '';
+  const actions = [
+    st === 'permission' ? `<button class="pill-btn small light" type="button" data-set-action="allow" data-src="${esc(src.id)}">Allow</button>` : '',
+    st === 'auth' ? `<button class="pill-btn small light" type="button" data-set-action="connect" data-account="${esc(accountOf(src))}">Connect</button>` : '',
+    src.kind === 'drive' ? `<a class="round-btn sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(src.folderId)}" target="_blank" rel="noopener" aria-label="Open in Drive" title="Open in Drive">${ICON.chevron}</a>` : '',
+    src.isDefault ? '<span class="badge-default">Default</span>'
+      : `<button class="pill-btn small danger" type="button" data-set-action="remove" data-src="${esc(src.id)}">Remove</button>`,
+  ].join('');
+  return `<div class="set-row src-row">
+    <span class="src-icon">${src.kind === 'local' ? ICON.pc : ICON.drive}</span>
+    <span class="src-text"><b>${esc(name)}</b><small>${esc([where, count, status].filter(Boolean).join(' · '))}</small></span>
+    <span class="src-actions">${actions}</span>
+  </div>`;
+}
+
 function toggleRow(key, label, hint) {
   return `<label class="set-row">
     <span><b>${esc(label)}</b>${hint ? `<small>${esc(hint)}</small>` : ''}</span>
@@ -868,29 +1046,43 @@ function toggleRow(key, label, hint) {
 }
 
 async function openSettings(push = true) {
-  const folderName = raw?.rootName || 'Loading…';
-  const custom = !!settings.folderId;
   const rg = settings.replayGain;
   const html = `
     <div class="info-group set-group">
-      <h4>Library</h4>
-      <div class="set-row">
-        <span><b>Music folder</b><small>${esc(folderName)}${custom ? ' · custom' : ''}</small></span>
-        <a class="set-link" href="https://drive.google.com/drive/folders/${encodeURIComponent(musicFolderId())}" target="_blank" rel="noopener">Open in Drive</a>
+      <h4>Music sources</h4>
+      ${listSources().map(sourceRow).join('')}
+      <div class="set-buttons">
+        <button class="pill-btn small" type="button" data-set-action="refresh">Refresh all</button>
+        <button class="pill-btn small" type="button" data-set-action="rescan">Re-read all song info</button>
       </div>
+    </div>
+
+    <div class="info-group set-group">
+      <h4>Add a source <span class="h4-note">${listSources().length - 1} of ${MAX_EXTRA} extra</span></h4>
+      ${canAddSource() ? `
+      <form class="set-form" data-form="add-drive">
+        <label for="add-drive-link" class="set-label">${ICON.drive} Google Drive folder (paste its link)</label>
+        <input id="add-drive-link" class="set-input" type="text" placeholder="https://drive.google.com/drive/folders/…" autocomplete="off">
+        <div class="set-inline">
+          <select id="add-drive-account" class="set-input" aria-label="Google account">
+            ${knownAccounts().map((a) => `<option value="${esc(a)}">${esc(a)}${a === primaryAccount() ? ' (main)' : ''}</option>`).join('')}
+            <option value="__other__">Another Google account…</option>
+          </select>
+          <button class="pill-btn small" type="submit">Add</button>
+        </div>
+      </form>
+      <div class="set-row">
+        <span><b>${ICON.pc} Folder on this PC</b><small>${localSupported() ? 'Pick it once. The app remembers it.' : 'Works in Chrome or Edge on a computer.'}</small></span>
+        <button class="pill-btn small" type="button" data-set-action="add-local" ${localSupported() ? '' : 'disabled'}>Choose folder</button>
+      </div>` : `<p class="info-note pad">You've reached ${MAX_EXTRA} extra sources. Remove one to add another.</p>`}
       <form class="set-form" data-form="folder">
-        <label for="folder-input" class="set-label">Use a different folder (paste its Drive link)</label>
+        <label for="folder-input" class="set-label">Change the default Drive folder</label>
         <div class="set-inline">
           <input id="folder-input" class="set-input" type="text" placeholder="https://drive.google.com/drive/folders/…" autocomplete="off">
           <button class="pill-btn small" type="submit">Use</button>
         </div>
-        ${custom ? '<button class="text-btn" type="button" data-set-action="folder-reset">Go back to the default folder</button>' : ''}
+        ${settings.folderId ? '<button class="text-btn" type="button" data-set-action="folder-reset">Go back to the original folder</button>' : ''}
       </form>
-      <div class="set-buttons">
-        <button class="pill-btn small" type="button" data-set-action="refresh">Refresh library</button>
-        <button class="pill-btn small" type="button" data-set-action="rescan">Re-read all song info</button>
-        <button class="pill-btn small" type="button" data-set-action="upload">${ICON.upload}<span>Upload songs</span></button>
-      </div>
     </div>
 
     <div class="info-group set-group">
@@ -918,12 +1110,12 @@ async function openSettings(push = true) {
 
     <div class="info-group set-group">
       <h4>Account</h4>
-      <div class="set-row"><span><b>Google Drive access</b><small>${canWrite() ? 'Read and upload' : hasToken() ? 'Read only · uploading asks for permission' : 'Not connected'}</small></span></div>
+      ${knownAccounts().map((a) => `<div class="set-row"><span><b>${esc(accountName(a) || a)}${a === primaryAccount() ? ' · main' : ''}</b><small>${esc(a)} · ${canWrite(a) ? 'read and upload' : hasToken(a) ? 'read only' : 'signed out'}</small></span>${hasToken(a) ? '' : `<button class="pill-btn small" type="button" data-set-action="connect" data-account="${esc(a)}">Connect</button>`}</div>`).join('') || '<div class="set-row"><span><b>Google Drive</b><small>Not connected</small></span></div>'}
       ${installPrompt ? '<div class="set-row"><span><b>Install app</b><small>Add My Player to your home screen.</small></span><button class="pill-btn small" type="button" data-set-action="install">Install</button></div>' : ''}
       <div class="set-row"><span><b>Log out</b><small>Signs out and clears saved data on this device.</small></span>
         <button class="pill-btn small danger" type="button" data-set-action="logout">Log out</button></div>
     </div>
-    <p class="info-note center">My Player ${APP_VERSION}${raw ? ` · ${plural(raw.files.length, 'file')}` : ''}</p>`;
+    <p class="info-note center">My Player ${APP_VERSION} · ${plural(allFiles().length, 'song')} from ${plural(listSources().length, 'source')}</p>`;
   openSheet('settings', 'Settings', html, push);
   const [meta, covers] = await Promise.all([idbGetAll('meta'), idbGetAll('covers')]);
   let bytes = 0;
@@ -953,15 +1145,71 @@ function onSettingsEvent(e) {
   const act = e.target.closest('[data-set-action]')?.dataset.setAction;
   if (!act) return;
   if (act === 'refresh') { withAuth(() => refreshLibrary()); toast('Refreshing your library…'); }
-  if (act === 'rescan') withAuth(() => { clearCache(); raw = null; lib = null; closeSheet(); refreshLibrary(); });
+  if (act === 'rescan') withAuth(() => { resetLibrary(); closeSheet(); refreshLibrary(); });
   if (act === 'upload') openUpload(undefined, false);
-  if (act === 'clear') { clearCache(); closeSheet(); toast('Cleared. Song info will be read again.'); withAuth(() => { raw = null; lib = null; refreshLibrary(); }); }
+  if (act === 'clear') { resetLibrary(); closeSheet(); toast('Cleared. Song info will be read again.'); withAuth(() => refreshLibrary()); }
+  if (act === 'allow') allowLocal(e.target.closest('[data-src]').dataset.src).then(() => openSettings(false));
+  if (act === 'connect') reconnect(e.target.closest('[data-account]').dataset.account).then(() => openSettings(false));
+  if (act === 'remove') {
+    const id = e.target.closest('[data-src]').dataset.src;
+    removeSource(id);
+    delete scans[id];
+    delete srcState[id];
+    rebuild();
+    render();
+    openSettings(false);
+    toast('Source removed. Its files are untouched.');
+  }
+  if (act === 'add-local') addLocal();
   if (act === 'folder-reset') { setSetting('folderId', ''); switchFolder(); }
   if (act === 'install' && installPrompt) { installPrompt.prompt(); installPrompt = null; openSettings(false); }
   if (act === 'logout') logout();
 }
 
+function resetLibrary() {
+  clearCache();
+  for (const id of Object.keys(scans)) delete scans[id];
+  lib = null;
+}
+
+async function addLocal() {
+  try {
+    const handle = await window.showDirectoryPicker({ id: 'my-player-music', mode: 'read' });
+    const src = await addLocalSource(handle);
+    toast(`Added "${src.name}". Scanning…`);
+    openSettings(false);
+    await refreshLibrary({ quiet: true, only: src.id });
+    openSettings(false);
+  } catch (e) {
+    if (e?.name !== 'AbortError') toast(e.message || "Couldn't add that folder.");
+  }
+}
+
+async function addDrive(link, accountChoice) {
+  const folderId = parseFolderInput(link);
+  if (!folderId) { toast("That doesn't look like a Drive folder link."); return; }
+  try {
+    let account = accountChoice;
+    if (account === '__other__') account = await signIn({ choose: true });
+    else if (!hasToken(account)) await signIn({ account });
+    const folder = await getFolder(folderId, account);
+    const src = addDriveSource({ folderId, account: account === primaryAccount() ? '' : account, name: folder.name });
+    toast(`Added "${folder.name}". Scanning…`);
+    openSettings(false);
+    await refreshLibrary({ quiet: true, only: src.id });
+    openSettings(false);
+  } catch (e) {
+    toast(e.message || "Couldn't add that folder.");
+  }
+}
+
 function onSettingsSubmit(e) {
+  const add = e.target.closest('[data-form="add-drive"]');
+  if (add) {
+    e.preventDefault();
+    addDrive($('#add-drive-link').value, $('#add-drive-account').value);
+    return;
+  }
   const form = e.target.closest('[data-form="folder"]');
   if (!form) return;
   e.preventDefault();
@@ -973,8 +1221,7 @@ function onSettingsSubmit(e) {
 
 function switchFolder() {
   closeSheet();
-  raw = null;
-  lib = null;
+  delete scans.default;
   location.hash = '';
   withAuth(() => refreshLibrary());
 }
@@ -999,14 +1246,21 @@ function addUploadFiles(fileList) {
   if (skipped) toast(`Skipped ${plural(skipped, 'file')} that isn't audio, .lrc or an image.`);
 }
 
+const driveSources = () => listSources().filter((src) => src.kind === 'drive' && scans[src.id]);
+
+function uploadTarget(folderId) {
+  for (const src of driveSources()) if (scans[src.id].folders[folderId]) return src;
+  return null;
+}
+
 function openUpload(folderId, push = true) {
-  if (folderId !== undefined) upload.folder = folderId;
-  const folders = raw ? Object.values(raw.folders).sort((a, b) => a.path.localeCompare(b.path)) : [];
-  const rootId = musicFolderId();
+  if (folderId !== undefined) upload.folder = uploadTarget(folderId) ? folderId : '';
+  const rootId = scans.default?.rootId || driveSources()[0] && scans[driveSources()[0].id].rootId || '';
   const ready = upload.items.filter((i) => i.status === 'ready').length;
   const selected = upload.folder || rootId;
+  const sel = selected;
   const html = `
-    ${canWrite() ? '' : '<p class="info-note first">Uploading needs permission to add files to your Google Drive. Google will ask you once when you start.</p>'}
+    ${driveSources().some((src) => !canWrite(accountOf(src))) ? '<p class="info-note first">Uploading needs permission to add files to your Google Drive. Google will ask you once when you start.</p>' : ''}
     <div class="drop-zone" data-up="pick" role="button" tabindex="0">
       ${ICON.upload}
       <b>Choose files</b>
@@ -1014,10 +1268,17 @@ function openUpload(folderId, push = true) {
     </div>
     <label class="set-label" for="up-folder">Upload to</label>
     <select id="up-folder" class="set-input">
-      ${folders.map((f) => `<option value="${esc(f.id)}" ${selected === f.id ? 'selected' : ''}>${esc(f.path)}</option>`).join('') || `<option value="${esc(rootId)}">Music folder</option>`}
-      <option value="__new__" ${selected === '__new__' ? 'selected' : ''}>New album folder…</option>
+      ${driveSources().map((src) => {
+        const sc = scans[src.id];
+        const folders = Object.values(sc.folders).sort((a, b) => a.path.localeCompare(b.path));
+        return `<optgroup label="${esc(sc.rootName)}${src.account ? ' · ' + esc(src.account) : ''}">
+          ${folders.map((f) => `<option value="${esc(f.id)}" ${sel === f.id ? 'selected' : ''}>${esc(f.path)}</option>`).join('')}
+          <option value="__new__:${esc(src.id)}" ${sel === '__new__:' + src.id ? 'selected' : ''}>New album folder in ${esc(sc.rootName)}…</option>
+        </optgroup>`;
+      }).join('')}
     </select>
-    <input id="up-new" class="set-input" type="text" placeholder="New folder name (for example the album title)" ${selected === '__new__' ? '' : 'hidden'}>
+    <input id="up-new" class="set-input" type="text" placeholder="New folder name (for example the album title)" ${sel.startsWith('__new__') ? '' : 'hidden'}>
+    <p class="info-note">Uploads go to Google Drive. PC folders can't be uploaded to.</p>
     <div class="up-list">${upload.items.map((it, i) => uploadRow(it, i)).join('')}</div>
     <div class="set-buttons">
       <button class="pill-btn light" type="button" data-up="start" ${!ready || upload.busy ? 'disabled' : ''}>${upload.busy ? 'Uploading…' : ready ? `Upload ${plural(ready, 'file')}` : 'Upload'}</button>
@@ -1045,7 +1306,7 @@ function onUploadEvent(e) {
   if (sheetKind !== 'upload') return;
   if (e.type === 'change' && e.target.id === 'up-folder') {
     upload.folder = e.target.value;
-    $('#up-new').hidden = upload.folder !== '__new__';
+    $('#up-new').hidden = !upload.folder.startsWith('__new__');
     return;
   }
   if (e.type !== 'click') return;
@@ -1060,16 +1321,21 @@ function onUploadEvent(e) {
 
 function startUpload() {
   if (upload.busy) return;
-  const target = $('#up-folder')?.value || musicFolderId();
+  const target = $('#up-folder')?.value || '';
   const newName = $('#up-new')?.value.trim();
-  if (target === '__new__' && !newName) { toast('Type a name for the new folder.'); return; }
+  if (!target) { toast('No Drive folder to upload to yet.'); return; }
+  const isNew = target.startsWith('__new__:');
+  if (isNew && !newName) { toast('Type a name for the new folder.'); return; }
+  const src = isNew ? sourceById(target.slice(8)) : uploadTarget(target);
+  if (!src) { toast('Pick a Drive folder to upload to.'); return; }
+  const account = accountOf(src);
   const run = async () => {
     upload.busy = true;
     if (sheetKind === 'upload') openUpload(undefined, false);
     let parent = target;
     try {
-      if (target === '__new__') {
-        const f = await createFolder(newName, musicFolderId());
+      if (isNew) {
+        const f = await createFolder(newName, scans[src.id].rootId, account);
         parent = f.id;
         upload.folder = f.id;
       }
@@ -1086,7 +1352,7 @@ function startUpload() {
       it.status = 'uploading';
       refreshUploadRow(i);
       try {
-        await uploadFile(it.file, parent, (p) => {
+        await uploadFile(it.file, parent, account, (p) => {
           it.progress = p;
           const bar = document.querySelector(`#up-${i} .up-bar i`);
           const st = document.querySelector(`#up-${i} .up-status`);
@@ -1109,11 +1375,11 @@ function startUpload() {
     if (sheetKind === 'upload') openUpload(undefined, false);
     if (ok) {
       toast(`Uploaded ${plural(ok, 'file')}. Updating your library…`);
-      refreshLibrary({ quiet: true });
+      refreshLibrary({ quiet: true, only: src.id });
     }
   };
-  if (canWrite() && !expiresSoon()) run();
-  else signIn({ write: true }).then(run).catch((e) => toast(e.message));
+  if (canWrite(account) && !expiresSoon(account)) run();
+  else signIn({ write: true, account }).then(run).catch((e) => toast(e.message));
 }
 
 function wireDragDrop() {
@@ -1159,6 +1425,8 @@ function wireStaticUi() {
     else if (action === 'back') history.length > 1 ? history.back() : (location.hash = '');
     else if (action === 'album-info') openAlbumInfo(el.dataset.key);
     else if (action === 'refresh') withAuth(() => refreshLibrary());
+    else if (action === 'allow-local') allowLocal(el.dataset.src);
+    else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
     else if (action === 'upload') openUpload(el.dataset.folder || undefined);
     else if (action === 'jump') withAuth(() => player.jumpTo(Number(el.dataset.pos)));
@@ -1290,6 +1558,7 @@ function withAuth(fn) {
   signIn().then(() => { hideToast(); fn(); }).catch((e) => toast(e.message));
 }
 
+
 function logout() {
   player.audio.pause();
   signOut();
@@ -1315,9 +1584,18 @@ function hideToast() {
 }
 
 player.on('change', updatePlayerUi);
-player.on('state', updatePlayState);
+player.on('state', () => { updatePlayState(); if (player.state.playing) progressLoop(); });
 player.on('time', updateTime);
-player.on('auth', () => toast('Session expired. Connect again to keep playing.', { action: 'Connect', onAction: reconnect }));
+player.on('auth', (e) => {
+  const t = e.detail || {};
+  if (t.mode === 'local-permission') {
+    toast(`Allow access to "${t.src.name}" to play this song.`, { action: 'Allow', onAction: () => allowLocal(t.src.id) });
+  } else {
+    const account = t.account || primaryAccount();
+    toast(account && account !== primaryAccount() ? `Connect ${account} to play this song.` : 'Session expired. Connect again to keep playing.',
+      { action: 'Connect', onAction: () => reconnect(account) });
+  }
+});
 player.on('error', (e) => toast(e.detail));
 
 boot();
