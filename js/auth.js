@@ -72,7 +72,8 @@ function makeClient(scope) {
         return;
       }
       const write = google.accounts.oauth2.hasGrantedAllScopes(resp, WRITE_SCOPE);
-      if (scope.includes(WRITE_SCOPE) && !write) {
+      // Compare whole scope names: '…/drive.readonly' contains the text '…/drive'.
+      if (scope.split(' ').includes(WRITE_SCOPE) && !write) {
         settle('reject', new Error('Upload permission was not granted. In the Google window, tick "See, edit, create and delete all of your Google Drive files".'));
         return;
       }
