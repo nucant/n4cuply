@@ -1111,11 +1111,11 @@ async function openSettings(push = true) {
     <div class="info-group set-group">
       <h4>Account</h4>
       ${knownAccounts().map((a) => `<div class="set-row"><span><b>${esc(accountName(a) || a)}${a === primaryAccount() ? ' · main' : ''}</b><small>${esc(a)} · ${canWrite(a) ? 'read and upload' : hasToken(a) ? 'read only' : 'signed out'}</small></span>${hasToken(a) ? '' : `<button class="pill-btn small" type="button" data-set-action="connect" data-account="${esc(a)}">Connect</button>`}</div>`).join('') || '<div class="set-row"><span><b>Google Drive</b><small>Not connected</small></span></div>'}
-      ${installPrompt ? '<div class="set-row"><span><b>Install app</b><small>Add My Player to your home screen.</small></span><button class="pill-btn small" type="button" data-set-action="install">Install</button></div>' : ''}
+      ${installPrompt ? '<div class="set-row"><span><b>Install app</b><small>Add N4cuply to your home screen.</small></span><button class="pill-btn small" type="button" data-set-action="install">Install</button></div>' : ''}
       <div class="set-row"><span><b>Log out</b><small>Signs out and clears saved data on this device.</small></span>
         <button class="pill-btn small danger" type="button" data-set-action="logout">Log out</button></div>
     </div>
-    <p class="info-note center">My Player ${APP_VERSION} · ${plural(allFiles().length, 'song')} from ${plural(listSources().length, 'source')}</p>`;
+    <p class="info-note center">N4cuply ${APP_VERSION} · ${plural(allFiles().length, 'song')} from ${plural(listSources().length, 'source')}</p>`;
   openSheet('settings', 'Settings', html, push);
   const [meta, covers] = await Promise.all([idbGetAll('meta'), idbGetAll('covers')]);
   let bytes = 0;

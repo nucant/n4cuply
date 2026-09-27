@@ -1,7 +1,7 @@
 {
-  "name": "My Player",
-  "short_name": "My Player",
-  "description": "Nijer gaan, nijer Google Drive theke.",
+  "name": "N4cuply",
+  "short_name": "N4cuply",
+  "description": "Your music, straight from your Drive. Lossless, Hi-Res, synced lyrics.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -587,3 +587,19 @@ select.set-input { appearance: auto; }
   .src-text { flex: 1 1 60%; }
   .src-actions { margin-left: 52px; }
 }
+
+/* ---------- v1.3.1: phone Now Playing fills the screen ---------- */
+@media (max-width: 899px) {
+  .np-layout { display: flex; flex-direction: column; min-height: 100%; }
+  .np-art-wrap { flex: 1 1 auto; display: flex; min-height: min(100vw, 52vh); }
+  .np-art { flex: 1; width: 100%; aspect-ratio: auto; min-height: 100%; background-position: center 30%; }
+  .np-body {
+    flex: none; margin-top: -72px;
+    padding-bottom: calc(clamp(20px, 5vh, 44px) + var(--safe-b));
+    gap: clamp(12px, 2.2vh, 20px);
+  }
+  .np-controls { margin: clamp(4px, 1.5vh, 16px) 0; }
+}
+@media (min-width: 900px) { .np-layout { display: grid; } }
+
+.login-tag { font-size: clamp(20px, 5vw, 26px); font-weight: 700; letter-spacing: -.03em; color: var(--text) !important; margin-top: -6px !important; }

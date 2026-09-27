@@ -1,4 +1,4 @@
-# My Player
+# N4cuply
 
 A private music player for your own songs. Your music stays in a private Google Drive folder and streams straight from there. There are no passwords or secrets in this code: to hear anything you have to sign in with the Google account that owns the folder.
 
