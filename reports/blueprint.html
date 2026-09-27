@@ -6,7 +6,7 @@
 <title>Private Player Blueprint</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@500&family=Fraunces:opsz,wght@9..144,600&family=Barlow:wght@500;600&family=Roboto+Mono:wght@500&display=swap">
 <style>
   :root {
     color-scheme: dark;
@@ -266,6 +266,45 @@
     .tracker li { grid-template-columns: 1fr auto; }
     .tracker .what { grid-column: 1 / -1; }
   }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; flex-wrap: wrap; border-bottom: 1.5px solid var(--line); }
+  .tab { font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; color: var(--line-dim); background: none; border: 0; border-right: 1px solid var(--line-faint); padding: 12px 22px; cursor: pointer; display: flex; gap: 10px; align-items: baseline; }
+  .tab .mono { font-size: 11px; letter-spacing: .08em; }
+  .tab[aria-selected="true"] { color: var(--paper-deep); background: var(--line); }
+  .tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .tab .new { font-family: var(--mono); font-size: 10px; color: var(--amber); border: 1px solid var(--amber); padding: 0 5px; letter-spacing: .08em; }
+  .tab[aria-selected="true"] .new { color: #7a4a00; border-color: #7a4a00; }
+  /* ---------- design tab ---------- */
+  table.spec td:first-child { white-space: normal; min-width: 150px; }
+  table.spec code { font-size: 12px; white-space: nowrap; }
+  table.spec tr.grp td { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--amber); background: rgba(255, 212, 121, .06); padding-block: 6px; }
+  .dirs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .dir { border: 1px dashed var(--line-dim); padding: 16px; display: grid; gap: 12px; align-content: start; }
+  .dir.rec { border: 1.5px solid var(--mint); }
+  .dir-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dir p { font-size: 14px; }
+  .dir-sample { padding: 18px; min-height: 150px; display: grid; gap: 6px; align-content: center; border-radius: 4px; }
+  .dir-a { background: #121315; color: #e9e6df; font-family: "Archivo", sans-serif; box-shadow: inset 0 0 0 1px #2a2d31; }
+  .sa-title { font-weight: 800; font-size: 24px; letter-spacing: -.01em; }
+  .sa-sub { font-size: 13px; color: #a8a49b; }
+  .sa-vfd { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: #6ff2d6; background: #0a1412; border: 1px solid #1d3b35; padding: 6px 10px; text-shadow: 0 0 8px rgba(111, 242, 214, .55); margin-top: 6px; }
+  .sa-meter { height: 6px; background: #26221a; } .sa-meter i { display: block; height: 100%; background: linear-gradient(90deg, #ffb347 80%, #ff6b4a); }
+  .dir-b { background: #f1ede4; color: #151412; }
+  .sb-title { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 30px; line-height: 1; }
+  .sb-sub { font-family: "Fraunces", Georgia, serif; font-size: 14px; color: #8e2f2f; }
+  .sb-credit { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: #5d574c; line-height: 1.6; margin-top: 8px; border-top: 1px solid #b7ae9c; padding-top: 8px; }
+  .dir-c { background: #0f1114; color: #c9d3e0; font-family: "Roboto Mono", monospace; font-size: 12px; gap: 0; padding: 10px; align-content: start; }
+  .sc-row { display: grid; grid-template-columns: 28px 1fr 46px 38px; gap: 8px; padding: 7px 6px; border-bottom: 1px solid #23272e; }
+  .sc-h { font-family: "Barlow", sans-serif; font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #9fb7d8; }
+  .sc-on { background: #1a2230; color: #7fe0a0; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .swatches span { font-family: var(--mono); font-size: 10.5px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line-faint); padding: 3px 8px 3px 4px; }
+  .swatches span::before { content: ""; width: 14px; height: 14px; background: var(--c); border: 1px solid var(--line-faint); }
+  .wf-pair { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .wf-pair .diagram svg { min-width: 560px; }
+  .wf-pair .phone svg { min-width: 0; max-width: 300px; margin-inline: auto; }
+  @media (max-width: 760px) { .wf-pair { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -280,13 +319,19 @@
     <div class="tblock" aria-label="Drawing details">
       <div>Dwg no.</div><div>MP-001</div>
       <div>Sheet</div><div>1 of 1</div>
-      <div>Rev</div><div>C · + tracker</div>
+      <div>Rev</div><div>D · + design tab</div>
       <div>Date</div><div>27 Sep 2026</div>
       <div>Scale</div><div>NTS</div>
-      <div>Status</div><div class="amber-t">Step 4 · Test</div>
+      <div>Status</div><div class="amber-t">Step 6 · Design approve</div>
     </div>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Report sections">
+    <button class="tab" role="tab" id="tab-plan" aria-controls="panel-plan" aria-selected="true" data-tab="plan">Plan &amp; progress <span class="mono">A0–A10</span></button>
+    <button class="tab" role="tab" id="tab-design" aria-controls="panel-design" aria-selected="false" data-tab="design">Design planning <span class="mono">D1–D9</span> <span class="new">NEW</span></button>
+  </nav>
+
+  <div class="panel" id="panel-plan" role="tabpanel" aria-labelledby="tab-plan">
   <!-- A0 PROGRESS -->
   <section>
     <div class="sec-head"><span class="ref">A0</span><h2>Progress tracker</h2><span class="sec-note">Ki holo, ki cholche, ki baki · last update 27 Sep 2026</span></div>
@@ -300,16 +345,20 @@
       <li><span class="st done">Done</span><div class="what"><b>Step 2 · Drive folder link</b><span>Folder ID …NDl33Wq, share setting Restricted (private)</span></div><span class="when">27 Sep</span></li>
       <li><span class="st done">Done</span><div class="what"><b>Step 3 · GitHub username</b><span>nucant · site hobe nucant.github.io</span></div><span class="when">27 Sep</span></li>
       <li><span class="st done">Built</span><div class="what"><b>P1–P3 · App toiri</b><span>Google login, Drive scan, album, search, player, shuffle/repeat, lock screen, phone install · git commit d4d41dd</span></div><span class="when">27 Sep</span></li>
+      <li><span class="st done">Done</span><div class="what"><b>Step 4 · PC-te test</b><span>Login, library, play kaaj korche. Notun Client ID (…or3d5), Drive API on. Design pochondo hoyni</span></div><span class="when">27 Sep</span></li>
       <li><span class="st drop">Dropped</span><div class="what"><b>Apps Script version</b><span>Try korechilam, GitHub beche neyay bondho</span></div><span class="when">27 Sep</span></li>
     </ul>
     <p class="tracker-sub">Ekhon cholche</p>
     <ul class="tracker">
-      <li class="now"><span class="st now">Tomar kaaj</span><div class="what"><b>Step 4 · PC-te test</b><span>http://localhost:8080 khule Google connect, gaan chalao, kemon laglo bolo</span></div><span class="when">Ekhon</span></li>
+      <li class="now"><span class="st now">Tomar kaaj</span><div class="what"><b>Step 6 · Design + info plan approve</b><span>"Design planning" tab dekho: info list OK kina, ar design A / B / C</span></div><span class="when">Ekhon</span></li>
       <li><span class="st wait">Waiting</span><div class="what"><b>pCloud app approval</b><span>Request submit, pCloud-er uttorer opekkhay</span></div><span class="when">pCloud</span></li>
     </ul>
     <p class="tracker-sub">Porer dhap (ek ek kore)</p>
     <ul class="tracker">
-                        <li><span class="st plan">Planned</span><div class="what"><b>Step 5 · GitHub repo + live</b><span>Repo banano, push, GitHub Pages on, Google-e nucant.github.io add, phone-e test</span></div><span class="when">Tumi + Ami</span></li>
+                        <li><span class="st plan">Planned</span><div class="what"><b>D-1 · Metadata reader</b><span>Sob tag + audio technical info</span></div><span class="when">Ami</span></li>
+      <li><span class="st plan">Planned</span><div class="what"><b>D-2 · Notun design</b><span>Beche newa direction, table view, Info panel</span></div><span class="when">Ami</span></li>
+      <li><span class="st plan">Planned</span><div class="what"><b>D-3 · Analysis</b><span>Waveform, spectrum, spectrogram, lossless check</span></div><span class="when">Ami</span></li>
+      <li><span class="st plan">Planned</span><div class="what"><b>Step 5 · GitHub repo + live</b><span>Repo banano, push, GitHub Pages on, Google-e nucant.github.io add, phone-e test</span></div><span class="when">Tumi + Ami</span></li>
       <li><span class="st plan">Planned</span><div class="what"><b>P5 · pCloud-e switch</b><span>Approval ashle</span></div><span class="when">Pore</span></li>
     </ul>
   </section>
@@ -630,15 +679,404 @@
       <li><span><b>Step 1 · Google Client ID</b> · <span style="color:var(--mint)">pawa geche ✓</span></span></li>
       <li><span><b>Step 2 · Drive folder link</b> · <span style="color:var(--mint)">pawa geche ✓</span></span></li>
       <li><span><b>Step 3 · GitHub username</b> · <span style="color:var(--mint)">pawa geche ✓</span></span></li>
-      <li><span><b>Step 4 · PC-te test</b> · <span class="amber-t">ekhon</span></span></li>
+      <li><span><b>Step 4 · PC-te test</b> · <span style="color:var(--mint)">kaaj korche ✓</span></span></li>
+      <li><span><b>Step 6 · Design + info approve</b> · <span class="amber-t">ekhon</span> (Design planning tab)</span></li>
       <li><span><b>Step 5 · GitHub repo</b></span></li>
     </ul>
   </section>
 
+  </div>
+
+  <div class="panel" id="panel-design" role="tabpanel" aria-labelledby="tab-design" hidden>
+
+  <!-- D1 SUMMARY -->
+  <section>
+    <div class="sec-head"><span class="ref">D1</span><h2>Ki bodlabe</h2><span class="sec-note">Rev D · approval-er jonno · kono code ekhono bodlano hoyni</span></div>
+    <div class="cols">
+      <div class="box solid">
+        <h3>Ekhon ja ache</h3>
+        <ul class="ticks">
+          <li>Shudhu file-er naam theke title</li>
+          <li>Folder = album, artist ba year nei</li>
+          <li>Format badge (MP3 / FLAC), ar kichu na</li>
+          <li>Sadharon dark design</li>
+        </ul>
+      </div>
+      <div class="box mint">
+        <h3>Notun version</h3>
+        <ul class="ticks yes">
+          <li>File-er bhetorer sob tag pora (ID3, Vorbis, MP4)</li>
+          <li>Audio technical info: bit depth, sample rate, bitrate, encoder…</li>
+          <li>Artist / album / year / genre / format diye library</li>
+          <li>Foobar-er moto sortable table view</li>
+          <li>Waveform, spectrum analyzer, lossless check</li>
+          <li>Notun design (D5-e 3-te option)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- D2 TAGS -->
+  <section>
+    <div class="sec-head"><span class="ref">D2</span><h2>Tag info</h2><span class="sec-note">File-e je tag lekha ache, sob dekhabe</span></div>
+    <div class="table-wrap">
+      <table class="spec">
+        <thead><tr><th>Info</th><th>MP3 · ID3v2</th><th>FLAC / OGG / Opus · Vorbis</th><th>M4A / ALAC · MP4</th><th>Kothay</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="5">Main</td></tr>
+          <tr><td>Title</td><td><code>TIT2</code></td><td><code>TITLE</code></td><td><code>©nam</code></td><td>Sob jaygay</td></tr>
+          <tr><td>Artist</td><td><code>TPE1</code></td><td><code>ARTIST</code></td><td><code>©ART</code></td><td>Sob jaygay</td></tr>
+          <tr><td>Album artist</td><td><code>TPE2</code></td><td><code>ALBUMARTIST</code></td><td><code>aART</code></td><td>Album, Artist page</td></tr>
+          <tr><td>Album</td><td><code>TALB</code></td><td><code>ALBUM</code></td><td><code>©alb</code></td><td>Sob jaygay</td></tr>
+          <tr><td>Track no / total</td><td><code>TRCK</code></td><td><code>TRACKNUMBER</code> <code>TRACKTOTAL</code></td><td><code>trkn</code></td><td>Album list</td></tr>
+          <tr><td>Disc no / total</td><td><code>TPOS</code></td><td><code>DISCNUMBER</code> <code>DISCTOTAL</code></td><td><code>disk</code></td><td>Album (Disc 1, Disc 2)</td></tr>
+          <tr><td>Date / year</td><td><code>TDRC</code> <code>TYER</code></td><td><code>DATE</code></td><td><code>©day</code></td><td>Album, table, filter</td></tr>
+          <tr><td>Original release</td><td><code>TDOR</code></td><td><code>ORIGINALDATE</code></td><td>·</td><td>Info panel</td></tr>
+          <tr><td>Genre</td><td><code>TCON</code></td><td><code>GENRE</code></td><td><code>©gen</code></td><td>Genre page, filter</td></tr>
+          <tr><td>Compilation</td><td><code>TCMP</code></td><td><code>COMPILATION</code></td><td><code>cpil</code></td><td>Grouping</td></tr>
+          <tr class="grp"><td colspan="5">Credits</td></tr>
+          <tr><td>Composer</td><td><code>TCOM</code></td><td><code>COMPOSER</code></td><td><code>©wrt</code></td><td>Info · Credits</td></tr>
+          <tr><td>Lyricist</td><td><code>TEXT</code></td><td><code>LYRICIST</code></td><td>·</td><td>Info · Credits</td></tr>
+          <tr><td>Conductor / remixer</td><td><code>TPE3</code> <code>TPE4</code></td><td><code>CONDUCTOR</code> <code>REMIXER</code></td><td>·</td><td>Info · Credits</td></tr>
+          <tr><td>Producer, engineer, mixer, performer</td><td><code>TIPL</code> <code>TMCL</code></td><td><code>PRODUCER</code> <code>ENGINEER</code> <code>MIXER</code> <code>PERFORMER</code></td><td>·</td><td>Info · Credits</td></tr>
+          <tr><td>Label / publisher</td><td><code>TPUB</code></td><td><code>LABEL</code> <code>ORGANIZATION</code></td><td>·</td><td>Album</td></tr>
+          <tr><td>Copyright</td><td><code>TCOP</code></td><td><code>COPYRIGHT</code></td><td><code>cprt</code></td><td>Album footer</td></tr>
+          <tr class="grp"><td colspan="5">DJ / nerd</td></tr>
+          <tr><td>BPM</td><td><code>TBPM</code></td><td><code>BPM</code></td><td><code>tmpo</code></td><td>Table, Info</td></tr>
+          <tr><td>Key</td><td><code>TKEY</code></td><td><code>INITIALKEY</code> <code>KEY</code></td><td>·</td><td>Table, Info</td></tr>
+          <tr><td>Mood, grouping, language</td><td><code>TMOO</code> <code>TIT1</code> <code>TLAN</code></td><td><code>MOOD</code> <code>GROUPING</code> <code>LANGUAGE</code></td><td><code>©grp</code></td><td>Info</td></tr>
+          <tr><td>ISRC, barcode, catalog no</td><td><code>TSRC</code> <code>TXXX</code></td><td><code>ISRC</code> <code>BARCODE</code> <code>CATALOGNUMBER</code></td><td>·</td><td>Info · IDs</td></tr>
+          <tr><td>MusicBrainz IDs</td><td><code>TXXX:MusicBrainz…</code></td><td><code>MUSICBRAINZ_*</code></td><td><code>----:MusicBrainz…</code></td><td>Info · IDs</td></tr>
+          <tr><td>ReplayGain (track / album, gain + peak)</td><td><code>TXXX:REPLAYGAIN_*</code></td><td><code>REPLAYGAIN_*</code></td><td><code>----:replaygain_*</code></td><td>Info · Loudness, volume normalize</td></tr>
+          <tr class="grp"><td colspan="5">Text ar chobi</td></tr>
+          <tr><td>Comment</td><td><code>COMM</code></td><td><code>COMMENT</code> <code>DESCRIPTION</code></td><td><code>©cmt</code></td><td>Info</td></tr>
+          <tr><td>Lyrics</td><td><code>USLT</code></td><td><code>LYRICS</code> <code>UNSYNCEDLYRICS</code></td><td><code>©lyr</code></td><td>Lyrics tab</td></tr>
+          <tr><td>Synced lyrics</td><td><code>SYLT</code> ba <code>.lrc</code></td><td><code>.lrc</code> file pashe</td><td><code>.lrc</code> file pashe</td><td>Lyrics tab, line-by-line</td></tr>
+          <tr><td>Embedded artwork</td><td><code>APIC</code></td><td><code>PICTURE</code> block</td><td><code>covr</code></td><td>Cover + Info (size, px, type)</td></tr>
+          <tr><td>Encoded by / software</td><td><code>TENC</code> <code>TSSE</code></td><td><code>ENCODER</code> + vendor string</td><td><code>©too</code></td><td>Info · File</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="dim">Tag file-e na thakle oi line dekhabe na. Kono tag na thakle ager moto file ar folder-er naam theke title ar album nebe. Upore list-e nei emon custom tag (<code>TXXX</code> ba je kono Vorbis field) "Other tags"-e sob raw dekhabe.</p>
+  </section>
+
+  <!-- D3 AUDIO -->
+  <section>
+    <div class="sec-head"><span class="ref">D3</span><h2>Audio technical info</h2><span class="sec-note">File-er header theke, tag na thakleo pawa jay</span></div>
+    <div class="cols">
+      <div class="box solid">
+        <h3>Sob format</h3>
+        <ul class="ticks">
+          <li>Codec + container (FLAC, MP3, AAC, ALAC, Opus, Vorbis, PCM)</li>
+          <li><b>Lossless / lossy</b> badge</li>
+          <li>Sample rate (44.1 / 48 / 96 / 192 kHz)</li>
+          <li>Bit depth (16 / 24 / 32-bit)</li>
+          <li>Channels + mode (stereo, joint stereo, mono, 5.1)</li>
+          <li>Bitrate: asol average = size × 8 ÷ duration</li>
+          <li>Exact duration, total samples</li>
+          <li><b>Hi-Res</b> badge: 24-bit ba 44.1 kHz-er beshi hole</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>FLAC</h3>
+        <ul class="ticks">
+          <li>STREAMINFO: min / max block size, frame size</li>
+          <li>Audio <b>MD5 signature</b></li>
+          <li>Encoder vendor (jemon reference libFLAC 1.4.3)</li>
+          <li>Embedded picture: type, mime, px, KB</li>
+          <li>Compression ratio (FLAC size ÷ WAV size)</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>MP3</h3>
+        <ul class="ticks">
+          <li>MPEG version + layer (MPEG-1 Layer III)</li>
+          <li><b>CBR / VBR / ABR</b> (Xing, Info, VBRI header theke)</li>
+          <li><b>LAME tag</b>: encoder version, preset (jemon <code>-V0</code>, <code>320 CBR</code>), lowpass</li>
+          <li>ID3 version (v2.3 / v2.4 / v1)</li>
+          <li>Emphasis, CRC, copyright / original flag</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>M4A / WAV / OGG</h3>
+        <ul class="ticks">
+          <li>M4A: AAC-LC / HE-AAC / ALAC, encoder (iTunes ityadi)</li>
+          <li>WAV: PCM / float, bit depth, <code>LIST INFO</code> tag</li>
+          <li>OGG / Opus: vendor, pre-skip, output gain</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>File</h3>
+        <ul class="ticks">
+          <li>File naam, size (MB), extension</li>
+          <li>Drive-e kon folder, kobe upload / modify</li>
+          <li>Tag size, artwork size alada</li>
+        </ul>
+      </div>
+      <div class="box amber">
+        <h3>Analysis (play korar somoy)</h3>
+        <ul class="ticks">
+          <li><b>Waveform</b> seek bar</li>
+          <li>Live <b>spectrum analyzer</b> + peak / VU meter</li>
+          <li><b>Spectrogram</b> + lossless check: 16 kHz-e cut thakle "MP3 theke banano FLAC hote pare" warning</li>
+          <li>Peak dBFS, approx LUFS, DR (dynamic range)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- D4 HOW -->
+  <section>
+    <div class="sec-head"><span class="ref">D4</span><h2>Info kivabe asbe</h2><span class="sec-note">Puro gaan download na kore</span></div>
+    <ol class="flow">
+      <li><div class="step"><span class="n">STEP 1</span><b>Folder scan</b><span>Ager motoi file list</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 2</span><b>Header read</b><span>Prottek file-er shudhu shurur ~256 KB (M4A hole seshe-o)</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 3</span><b>Parse</b><span>Nijer parser: ID3, FLAC, MP4, OGG, WAV. Kono 3rd party library na</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 4</span><b>Device-e save</b><span>IndexedDB-te. Porer bar file bodlale tobei abar pora</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 5</span><b>Library</b><span>Tag onujayi artist, album, genre, year</span></div></li>
+    </ol>
+    <p class="dim">Prothom bar scan-e ektu somoy lagbe (100 gaan ≈ kichu second), library pichone update hote thakbe. Waveform ar spectrogram-er jonno puro gaan decode korte hoy, tai eta shudhu je gaan cholche tar jonno.</p>
+  </section>
+
+  <!-- D5 DIRECTIONS -->
+  <section>
+    <div class="sec-head"><span class="ref">D5</span><h2>Design direction</h2><span class="sec-note">Ekta beche nao</span></div>
+    <div class="dirs">
+      <article class="dir rec">
+        <div class="dir-top"><h3>A · Hi-Fi Deck</h3><span class="pill good">Recommended</span></div>
+        <div class="dir-sample dir-a">
+          <div class="sa-title">Brishti Raat</div>
+          <div class="sa-sub">Tomar naam · Album 2026</div>
+          <div class="sa-vfd">FLAC&nbsp;&nbsp;24/96&nbsp;&nbsp;2CH&nbsp;&nbsp;2845 kbps</div>
+          <div class="sa-meter"><i style="width:72%"></i></div>
+        </div>
+        <div class="swatches">
+          <span style="--c:#121315">Graphite</span><span style="--c:#1d1f23">Panel</span><span style="--c:#e9e6df">Bone</span><span style="--c:#6ff2d6">VFD aqua</span><span style="--c:#ffb347">VU amber</span>
+        </div>
+        <p>Dami hi-fi amp ar DAC-er front panel-er moto. Technical info VFD display-er moto aqua mono lekhay jhakjhak kore. Amber shudhu meter ar peak-e.</p>
+        <p class="mono dim">Font · Archivo (UI) + JetBrains Mono (readout)</p>
+      </article>
+      <article class="dir">
+        <div class="dir-top"><h3>B · Liner Notes</h3></div>
+        <div class="dir-sample dir-b">
+          <div class="sb-title">Brishti Raat</div>
+          <div class="sb-sub">Tomar naam — 2026</div>
+          <div class="sb-credit">Composed &amp; produced by Tomar naam<br>Mixed at Home Studio, Kolkata</div>
+        </div>
+        <div class="swatches">
+          <span style="--c:#f1ede4">Paper</span><span style="--c:#151412">Ink</span><span style="--c:#8e2f2f">Oxblood</span><span style="--c:#b7ae9c">Sepia</span>
+        </div>
+        <p>CD booklet-er moto. Boro serif title, credits ar lyrics main focus. Light ar dark dutoi.</p>
+        <p class="mono dim">Font · Fraunces (title) + IBM Plex Mono (spec)</p>
+      </article>
+      <article class="dir">
+        <div class="dir-top"><h3>C · Studio Console</h3></div>
+        <div class="dir-sample dir-c">
+          <div class="sc-row sc-h"><span>#</span><span>Title</span><span>Fmt</span><span>kHz</span></div>
+          <div class="sc-row sc-on"><span>01</span><span>Brishti Raat</span><span>FLAC</span><span>96</span></div>
+          <div class="sc-row"><span>02</span><span>Shohor</span><span>MP3</span><span>44.1</span></div>
+          <div class="sc-row"><span>03</span><span>Bhor</span><span>FLAC</span><span>48</span></div>
+        </div>
+        <div class="swatches">
+          <span style="--c:#0f1114">Console</span><span style="--c:#23272e">Strip</span><span style="--c:#9fb7d8">Steel</span><span style="--c:#7fe0a0">Signal</span><span style="--c:#ff6b5e">Clip</span>
+        </div>
+        <p>DAW ba foobar2000-er moto. Ghono table, sob column ek sathe, keyboard diye cholano. Power user-der jonno.</p>
+        <p class="mono dim">Font · Barlow (UI) + Roboto Mono (data)</p>
+      </article>
+    </div>
+    <p class="dim">Je direction-i nao, table view ar full Info panel thakbe. Direction shudhu look ar feel thik kore.</p>
+  </section>
+
+  <!-- D6 WIREFRAME NOW PLAYING -->
+  <section>
+    <div class="sec-head"><span class="ref">D6</span><h2>Wireframe · Now Playing (PC)</h2><span class="sec-note">Direction A dhore · example data</span></div>
+    <div class="diagram">
+      <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, Consolas, monospace">
+        <g fill="none" stroke="#dbe9ff" stroke-width="1.5">
+          <rect x="10" y="10" width="940" height="540" fill="#0e3563"/>
+          <line x1="190" y1="10" x2="190" y2="550"/>
+          <line x1="650" y1="10" x2="650" y2="550"/>
+          <rect x="220" y="40" width="190" height="190" fill="#164a82"/>
+          <line x1="220" y1="40" x2="410" y2="230" stroke-opacity=".35"/><line x1="410" y1="40" x2="220" y2="230" stroke-opacity=".35"/>
+          <rect x="430" y="168" width="196" height="44" stroke="#8fd8ff" fill="#0b2d55"/>
+          <rect x="220" y="400" width="406" height="130" stroke-dasharray="4 4"/>
+        </g>
+        <g fill="#dbe9ff" font-size="12">
+          <text x="30" y="44" font-weight="600">LIBRARY</text>
+          <text x="30" y="80">Albums</text><text x="30" y="108">Artists</text><text x="30" y="136">Genres</text><text x="30" y="164">Formats</text><text x="30" y="192">Years</text><text x="30" y="220">Table view</text>
+          <text x="30" y="270" font-weight="600">FORMAT</text>
+          <text x="30" y="300" fill="#8fd8ff">FLAC  ·  42</text><text x="30" y="324" fill="#8fd8ff">MP3   ·  18</text><text x="30" y="348" fill="#8fd8ff">Hi-Res · 11</text>
+        </g>
+        <text x="315" y="140" fill="#dbe9ff" fill-opacity=".6" font-size="12" text-anchor="middle">COVER</text>
+        <g fill="#dbe9ff">
+          <text x="430" y="66" font-size="11" fill="#8fd8ff">NOW PLAYING</text>
+          <text x="430" y="96" font-size="22" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="600">BRISHTI RAAT</text>
+          <text x="430" y="120" font-size="12">Tomar naam</text>
+          <text x="430" y="140" font-size="12" fill-opacity=".7">Album Name · 2026 · Track 3/9</text>
+          <text x="440" y="195" font-size="12" fill="#6ff2d6">FLAC 24/96 · 2CH · 2845k</text>
+        </g>
+        <g fill="#8fd8ff" fill-opacity=".85">
+          <rect x="220" y="262" width="3" height="16"/><rect x="226" y="256" width="3" height="28"/><rect x="232" y="250" width="3" height="40"/><rect x="238" y="258" width="3" height="24"/><rect x="244" y="246" width="3" height="48"/><rect x="250" y="252" width="3" height="36"/><rect x="256" y="244" width="3" height="52"/><rect x="262" y="254" width="3" height="32"/><rect x="268" y="248" width="3" height="44"/><rect x="274" y="242" width="3" height="56"/><rect x="280" y="250" width="3" height="40"/><rect x="286" y="246" width="3" height="48"/><rect x="292" y="256" width="3" height="28"/><rect x="298" y="244" width="3" height="52"/><rect x="304" y="250" width="3" height="40"/><rect x="310" y="248" width="3" height="44"/><rect x="316" y="254" width="3" height="32"/><rect x="322" y="242" width="3" height="56"/><rect x="328" y="252" width="3" height="36"/><rect x="334" y="246" width="3" height="48"/><rect x="340" y="250" width="3" height="40"/><rect x="346" y="244" width="3" height="52"/><rect x="352" y="256" width="3" height="28"/><rect x="358" y="248" width="3" height="44"/>
+        </g>
+        <g fill="#dbe9ff" fill-opacity=".35">
+          <rect x="364" y="252" width="3" height="36"/><rect x="370" y="246" width="3" height="48"/><rect x="376" y="256" width="3" height="28"/><rect x="382" y="244" width="3" height="52"/><rect x="388" y="250" width="3" height="40"/><rect x="394" y="258" width="3" height="24"/><rect x="400" y="248" width="3" height="44"/><rect x="406" y="242" width="3" height="56"/><rect x="412" y="254" width="3" height="32"/><rect x="418" y="246" width="3" height="48"/><rect x="424" y="252" width="3" height="36"/><rect x="430" y="244" width="3" height="52"/><rect x="436" y="256" width="3" height="28"/><rect x="442" y="250" width="3" height="40"/><rect x="448" y="246" width="3" height="48"/><rect x="454" y="258" width="3" height="24"/><rect x="460" y="248" width="3" height="44"/><rect x="466" y="252" width="3" height="36"/><rect x="472" y="244" width="3" height="52"/><rect x="478" y="254" width="3" height="32"/><rect x="484" y="248" width="3" height="44"/><rect x="490" y="256" width="3" height="28"/><rect x="496" y="246" width="3" height="48"/><rect x="502" y="250" width="3" height="40"/><rect x="508" y="244" width="3" height="52"/><rect x="514" y="252" width="3" height="36"/><rect x="520" y="258" width="3" height="24"/><rect x="526" y="248" width="3" height="44"/><rect x="532" y="254" width="3" height="32"/><rect x="538" y="246" width="3" height="48"/><rect x="544" y="250" width="3" height="40"/><rect x="550" y="256" width="3" height="28"/><rect x="556" y="244" width="3" height="52"/><rect x="562" y="252" width="3" height="36"/><rect x="568" y="248" width="3" height="44"/><rect x="574" y="254" width="3" height="32"/><rect x="580" y="258" width="3" height="24"/><rect x="586" y="250" width="3" height="40"/><rect x="592" y="246" width="3" height="48"/><rect x="598" y="252" width="3" height="36"/><rect x="604" y="256" width="3" height="28"/><rect x="610" y="248" width="3" height="44"/><rect x="616" y="254" width="3" height="32"/><rect x="622" y="258" width="3" height="24"/>
+        </g>
+        <g font-size="11" fill="#dbe9ff" fill-opacity=".7">
+          <text x="220" y="316">1:42</text><text x="626" y="316" text-anchor="end">4:18</text>
+        </g>
+        <g fill="none" stroke="#dbe9ff" stroke-width="1.5">
+          <circle cx="330" cy="358" r="12"/><circle cx="380" cy="358" r="12"/><circle cx="423" cy="358" r="20" fill="#dbe9ff"/><circle cx="466" cy="358" r="12"/><circle cx="516" cy="358" r="12"/>
+        </g>
+        <g font-size="10" fill="#dbe9ff" fill-opacity=".7" text-anchor="middle">
+          <text x="330" y="386">SHUF</text><text x="380" y="386">PREV</text><text x="466" y="386">NEXT</text><text x="516" y="386">RPT</text>
+        </g>
+        <g fill="#6ff2d6" fill-opacity=".8">
+          <rect x="236" y="470" width="14" height="44"/><rect x="254" y="450" width="14" height="64"/><rect x="272" y="432" width="14" height="82"/><rect x="290" y="444" width="14" height="70"/><rect x="308" y="456" width="14" height="58"/><rect x="326" y="440" width="14" height="74"/><rect x="344" y="462" width="14" height="52"/><rect x="362" y="474" width="14" height="40"/><rect x="380" y="466" width="14" height="48"/><rect x="398" y="480" width="14" height="34"/><rect x="416" y="486" width="14" height="28"/><rect x="434" y="490" width="14" height="24"/><rect x="452" y="494" width="14" height="20"/><rect x="470" y="498" width="14" height="16"/><rect x="488" y="502" width="14" height="12"/>
+        </g>
+        <g fill="#ffb347"><rect x="560" y="420" width="10" height="94" fill-opacity=".25"/><rect x="560" y="446" width="10" height="68"/><rect x="590" y="420" width="10" height="94" fill-opacity=".25"/><rect x="590" y="452" width="10" height="62"/></g>
+        <g font-size="10" fill="#dbe9ff" fill-opacity=".7"><text x="232" y="416">SPECTRUM · 20 Hz – 20 kHz</text><text x="554" y="416">L</text><text x="584" y="416">R</text><text x="608" y="416">dB</text></g>
+        <!-- info panel -->
+        <g fill="#dbe9ff" font-size="12">
+          <text x="672" y="44" font-weight="600" fill="#8fd8ff">INFO</text><text x="730" y="44" fill-opacity=".6">LYRICS</text><text x="800" y="44" fill-opacity=".6">QUEUE</text>
+          <line x1="668" y1="54" x2="712" y2="54" stroke="#8fd8ff" stroke-width="2"/>
+          <text x="672" y="86" font-size="11" fill="#ffd479">TAGS</text>
+          <text x="672" y="108" fill-opacity=".6">Album artist</text><text x="930" y="108" text-anchor="end">Tomar naam</text>
+          <text x="672" y="128" fill-opacity=".6">Genre</text><text x="930" y="128" text-anchor="end">Indie Folk</text>
+          <text x="672" y="148" fill-opacity=".6">BPM · Key</text><text x="930" y="148" text-anchor="end">92 · A minor</text>
+          <text x="672" y="168" fill-opacity=".6">Composer</text><text x="930" y="168" text-anchor="end">Tomar naam</text>
+          <text x="672" y="200" font-size="11" fill="#ffd479">AUDIO</text>
+          <text x="672" y="222" fill-opacity=".6">Codec</text><text x="930" y="222" text-anchor="end">FLAC · lossless</text>
+          <text x="672" y="242" fill-opacity=".6">Sample rate</text><text x="930" y="242" text-anchor="end">96 000 Hz</text>
+          <text x="672" y="262" fill-opacity=".6">Bit depth</text><text x="930" y="262" text-anchor="end">24-bit</text>
+          <text x="672" y="282" fill-opacity=".6">Bitrate</text><text x="930" y="282" text-anchor="end">2 845 kbps avg</text>
+          <text x="672" y="302" fill-opacity=".6">Samples</text><text x="930" y="302" text-anchor="end">24 768 000</text>
+          <text x="672" y="322" fill-opacity=".6">MD5</text><text x="930" y="322" text-anchor="end">3f9a…c21e</text>
+          <text x="672" y="342" fill-opacity=".6">Encoder</text><text x="930" y="342" text-anchor="end">libFLAC 1.4.3</text>
+          <text x="672" y="374" font-size="11" fill="#ffd479">LOUDNESS</text>
+          <text x="672" y="396" fill-opacity=".6">Track gain</text><text x="930" y="396" text-anchor="end">−7.9 dB</text>
+          <text x="672" y="416" fill-opacity=".6">Peak</text><text x="930" y="416" text-anchor="end">−0.3 dBFS</text>
+          <text x="672" y="448" font-size="11" fill="#ffd479">FILE</text>
+          <text x="672" y="470" fill-opacity=".6">Size</text><text x="930" y="470" text-anchor="end">91.8 MB</text>
+          <text x="672" y="490" fill-opacity=".6">Folder</text><text x="930" y="490" text-anchor="end">Music / Album Name</text>
+          <text x="672" y="522" fill="#8fd8ff">+ Credits · IDs · Artwork · Other tags</text>
+        </g>
+      </svg>
+    </div>
+    <p class="diagram-caption">Bam: library navigation · Majhe: cover, VFD readout, waveform seek, controls, spectrum + L/R meter · Dan: Info / Lyrics / Queue tab.</p>
+  </section>
+
+  <!-- D7 WIREFRAME TABLE + PHONE -->
+  <section>
+    <div class="sec-head"><span class="ref">D7</span><h2>Wireframe · Table view ar phone</h2><span class="sec-note">Example data</span></div>
+    <div class="wf-pair">
+      <div class="diagram">
+        <svg viewBox="0 0 640 330" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, Consolas, monospace" font-size="11.5">
+          <rect x="6" y="6" width="628" height="318" fill="#0e3563" stroke="#dbe9ff" stroke-width="1.5"/>
+          <text x="22" y="32" fill="#dbe9ff" font-weight="600">TABLE VIEW</text>
+          <text x="618" y="32" fill="#8fd8ff" text-anchor="end">Filter: FLAC · Hi-Res ▾</text>
+          <line x1="16" y1="46" x2="624" y2="46" stroke="#dbe9ff" stroke-opacity=".4"/>
+          <g fill="#8fd8ff"><text x="22" y="64">#</text><text x="48" y="64">TITLE</text><text x="196" y="64">ARTIST</text><text x="316" y="64">YEAR ▾</text><text x="376" y="64">FMT</text><text x="428" y="64">BIT/kHz</text><text x="500" y="64">KBPS</text><text x="560" y="64">BPM</text><text x="604" y="64" text-anchor="end"></text></g>
+          <line x1="16" y1="74" x2="624" y2="74" stroke="#dbe9ff" stroke-opacity=".4"/>
+          <g fill="#dbe9ff">
+            <rect x="16" y="80" width="608" height="26" fill="#8fd8ff" fill-opacity=".12"/>
+            <text x="22" y="98" fill="#6ff2d6">▶</text><text x="48" y="98" fill="#6ff2d6">Brishti Raat</text><text x="196" y="98">Tomar naam</text><text x="316" y="98">2026</text><text x="376" y="98">FLAC</text><text x="428" y="98">24/96</text><text x="500" y="98">2845</text><text x="560" y="98">92</text>
+            <text x="22" y="130">2</text><text x="48" y="130">Shohor</text><text x="196" y="130">Tomar naam</text><text x="316" y="130">2025</text><text x="376" y="130">FLAC</text><text x="428" y="130">24/48</text><text x="500" y="130">1612</text><text x="560" y="130">118</text>
+            <text x="22" y="162">3</text><text x="48" y="162">Bhor</text><text x="196" y="162">Tomar naam</text><text x="316" y="162">2025</text><text x="376" y="162">MP3</text><text x="428" y="162">16/44.1</text><text x="500" y="162">V0 ~245</text><text x="560" y="162">76</text>
+            <text x="22" y="194">4</text><text x="48" y="194">Nodi (demo)</text><text x="196" y="194">Tomar naam</text><text x="316" y="194">2024</text><text x="376" y="194">WAV</text><text x="428" y="194">24/44.1</text><text x="500" y="194">2117</text><text x="560" y="194">104</text>
+            <text x="22" y="226">5</text><text x="48" y="226">Chhad</text><text x="196" y="226">Tomar naam</text><text x="316" y="226">2023</text><text x="376" y="226">M4A</text><text x="428" y="226">16/44.1</text><text x="500" y="226">256</text><text x="560" y="226">88</text>
+          </g>
+          <g stroke="#dbe9ff" stroke-opacity=".15"><line x1="16" y1="112" x2="624" y2="112"/><line x1="16" y1="144" x2="624" y2="144"/><line x1="16" y1="176" x2="624" y2="176"/><line x1="16" y1="208" x2="624" y2="208"/></g>
+          <text x="22" y="270" fill="#dbe9ff" fill-opacity=".7">Column click = sort · column add/remove: Genre, Key, Composer,</text>
+          <text x="22" y="288" fill="#dbe9ff" fill-opacity=".7">Label, Duration, Size, Encoder, ReplayGain, Date added</text>
+          <text x="22" y="310" fill="#ffd479">Status bar: 60 gaan · 4.2 GB · 5 h 12 m · 42 lossless / 18 lossy</text>
+        </svg>
+      </div>
+      <div class="diagram phone">
+        <svg viewBox="0 0 260 480" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, Consolas, monospace">
+          <rect x="8" y="8" width="244" height="464" rx="26" fill="#0e3563" stroke="#dbe9ff" stroke-width="1.5"/>
+          <rect x="40" y="48" width="180" height="180" fill="#164a82" stroke="#dbe9ff" stroke-width="1.2"/>
+          <line x1="40" y1="48" x2="220" y2="228" stroke="#dbe9ff" stroke-opacity=".3"/><line x1="220" y1="48" x2="40" y2="228" stroke="#dbe9ff" stroke-opacity=".3"/>
+          <text x="130" y="32" fill="#dbe9ff" fill-opacity=".7" font-size="10" text-anchor="middle">⌄  Album Name</text>
+          <text x="40" y="258" fill="#dbe9ff" font-size="17" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="600">BRISHTI RAAT</text>
+          <text x="40" y="276" fill="#dbe9ff" fill-opacity=".7" font-size="10">Tomar naam</text>
+          <rect x="40" y="288" width="180" height="22" fill="#0b2d55" stroke="#8fd8ff"/>
+          <text x="130" y="303" fill="#6ff2d6" font-size="10" text-anchor="middle">FLAC 24/96 · 2845k · HI-RES</text>
+          <g fill="#8fd8ff"><rect x="40" y="326" width="80" height="14" fill-opacity=".85"/></g><rect x="120" y="326" width="100" height="14" fill="#dbe9ff" fill-opacity=".25"/>
+          <g fill="none" stroke="#dbe9ff" stroke-width="1.3"><circle cx="58" cy="372" r="9"/><circle cx="94" cy="372" r="9"/><circle cx="130" cy="372" r="16" fill="#dbe9ff"/><circle cx="166" cy="372" r="9"/><circle cx="202" cy="372" r="9"/></g>
+          <rect x="30" y="404" width="200" height="50" rx="8" fill="none" stroke="#dbe9ff" stroke-dasharray="3 3"/>
+          <text x="130" y="425" fill="#8fd8ff" font-size="10" text-anchor="middle">INFO · LYRICS · QUEUE</text>
+          <text x="130" y="442" fill="#dbe9ff" fill-opacity=".7" font-size="9.5" text-anchor="middle">upore swipe = puro info panel</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- D8 ROADMAP -->
+  <section>
+    <div class="sec-head"><span class="ref">D8</span><h2>Design build sequence</h2><span class="sec-note">Tumi OK bolle</span></div>
+    <ol class="phases">
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">D-1</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Metadata reader</h3><span class="who me">Ami</span></div>
+          <ul class="ticks"><li>ID3v2 / v1, FLAC, MP4, OGG, WAV parser</li><li>Header range read + IndexedDB cache</li><li>Artist / album / genre / year library</li></ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">D-2</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Notun design</h3><span class="who me">Ami</span></div>
+          <ul class="ticks"><li>Tomar choose kora direction</li><li>Sidebar, table view, album page, Info panel, lyrics</li></ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">D-3</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Analysis</h3><span class="who me">Ami</span></div>
+          <ul class="ticks"><li>Waveform seek, spectrum analyzer, L/R meter</li><li>Spectrogram + lossless check, ReplayGain volume</li></ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">D-4</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Test → GitHub</h3><span class="who both">Tumi + Ami</span></div>
+          <ul class="ticks"><li>PC-te test, tarpor Step 5 (GitHub live)</li></ul>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- D9 DECIDE -->
+  <section>
+    <div class="sec-head"><span class="ref">D9</span><h2 class="amber-t">Tomar decision</h2></div>
+    <ul class="checklist">
+      <li><span><b>Info list (D2 + D3) OK?</b> Aro kichu lagle bolo · <span class="amber-t">ekhon</span></span></li>
+      <li><span><b>Design direction:</b> A, B na C (D5)</span></li>
+    </ul>
+  </section>
+
+  </div>
+
   <footer class="foot">
-    <span>MP-001 · PRIVATE PLAYER · REV C</span>
+    <span>MP-001 · PRIVATE PLAYER · REV D</span>
     <span>Drawn by Claude · 27.09.2026</span>
   </footer>
 </main>
+<script>
+  (function () {
+    var tabs = document.querySelectorAll('.tab');
+    function show(name) {
+      tabs.forEach(function (t) {
+        var on = t.dataset.tab === name;
+        t.setAttribute('aria-selected', String(on));
+        document.getElementById('panel-' + t.dataset.tab).hidden = !on;
+      });
+    }
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () { show(t.dataset.tab); history.replaceState(null, '', '#' + t.dataset.tab); });
+    });
+    show(location.hash === '#plan' ? 'plan' : 'design');
+  })();
+</script>
 </body>
 </html>
