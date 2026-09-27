@@ -12,7 +12,8 @@ import {
 import {
   analyze, mergeArtists, mergeAlbums, ignore, resetRules, getRules, adoptRules, onRulesChange, RULES_FILE,
   setTrackFix, setTrackFixes, clearTrackFix, trackKeyOf, rekeyTrack,
-  isLiked, toggleLike, playlists, createPlaylist, addToPlaylist, removeFromPlaylist, renamePlaylist, deletePlaylist,
+  isLiked, toggleLike, likeMany, playlists, createPlaylist, addToPlaylist, removeFromPlaylist, removeManyFromPlaylist,
+  renamePlaylist, deletePlaylist,
 } from './js/organize.js';
 import { analyzeAudio } from './js/analyze.js';
 import {
@@ -27,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -58,6 +59,7 @@ const ICON = {
   album: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>',
   mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></svg>',
   moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -291,6 +293,7 @@ function route() {
 const scrollMemory = new Map();
 let lastHash = location.hash;
 window.addEventListener('hashchange', () => {
+  if (sel.on) endSelect();
   scrollMemory.set(lastHash, window.scrollY);
   lastHash = location.hash;
   closeSheet(false);
@@ -348,8 +351,9 @@ function render() {
   else if (r.name === 'artist' && lib.artists.find((a) => a.name === r.id)) html = renderArtist(lib.artists.find((a) => a.name === r.id));
   else if (r.name === 'playlist') html = renderPlaylist(r.id);
   else html = renderHome(['album', 'artist', 'playlist'].includes(r.name) ? 'albums' : r.name);
-  if (!setMain(html)) { markPlaying(); return; }
+  if (!setMain(html)) { markPlaying(); if (sel.on) markSelected(); return; }
   hydrateArt(main);
+  if (sel.on) markSelected();
   const page = main.querySelector('[data-tint]');
   if (page) tintFromCover(page, page.dataset.tint, page.dataset.seed);
   markPlaying();
@@ -436,9 +440,10 @@ function renderHome(tab) {
       </nav>
       <div class="home-actions">
         <button class="pill-btn light" type="button" data-action="play-list" data-list="all">${ICON.play}<span>Play all</span></button>
-        <button class="pill-btn" type="button" data-action="shuffle-list" data-list="all">${ICON.shuffle}<span>Shuffle</span></button>
+        <button class="pill-btn narrow-icon-xs" type="button" data-action="shuffle-list" data-list="all" aria-label="Shuffle">${ICON.shuffle}<span>Shuffle</span></button>
         <button class="pill-btn narrow-icon" type="button" data-action="upload" aria-label="Upload">${ICON.upload}<span>Upload</span></button>
         <button class="pill-btn narrow-icon" type="button" data-action="organize" aria-label="Organize">${ICON.wand}<span>Organize</span></button>
+        ${tab === 'songs' ? `<button class="pill-btn narrow-icon" type="button" data-action="select" aria-label="Select songs">${ICON.check}<span>Select</span></button>` : ''}
       </div>
       ${scanBarHtml()}
     </section>`;
@@ -486,6 +491,7 @@ function renderAlbum(a) {
           <button class="round-btn" type="button" data-action="shuffle-list" data-list="album" aria-label="Shuffle">${ICON.shuffle}</button>
           <button class="pill-btn" type="button" data-action="play-list" data-list="album">${ICON.play}<span>Play</span></button>
           <button class="round-btn" type="button" data-action="upload" data-folder="${esc(a.folderId)}" aria-label="Upload to this album">${ICON.upload}</button>
+          <button class="round-btn" type="button" data-action="select" aria-label="Select songs">${ICON.check}</button>
         </div>
       </header>
       <section class="section"><div class="rows">${rows}</div></section>
@@ -537,6 +543,7 @@ function renderArtist(ar) {
       <div class="artist-actions">
         <button class="play-fab" type="button" data-action="play-list" data-list="popular" aria-label="Play">${ICON.play}</button>
         <button class="round-btn" type="button" data-action="shuffle-list" data-list="artist" aria-label="Shuffle">${ICON.shuffle}</button>
+        <button class="round-btn" type="button" data-action="select" aria-label="Select songs">${ICON.check}</button>
       </div>
       <section class="section"><h2 class="section-title">Popular</h2><div class="rows">${lists.popular.map((t, i) => songRow(t, 'popular', i, { showArt: true, hideArtist: true })).join('')}</div></section>
       <section class="section"><h2 class="section-title">Albums</h2><div class="grid">${ar.albums.map(albumCard).join('')}</div></section>
@@ -596,6 +603,7 @@ function songRow(t, list, i, { number = false, showArt = false, hideArtist = fal
   const sub = [hideArtist ? '' : t.artist, list === 'album' ? '' : t.album].filter(Boolean).join(' · ');
   return `
     <div class="row" role="button" tabindex="0" data-action="play-track" data-list="${list}" data-i="${i}" data-id="${esc(t.id)}">
+      <span class="check" aria-hidden="true"></span>
       ${number ? `<span class="num">${t.n}</span>` : showArt ? `<span class="art sm" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></span>` : ''}
       <span class="row-text"><b>${esc(t.title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
       <span class="row-end">
@@ -1663,10 +1671,12 @@ function renderPlaylist(id) {
         <div class="hero-actions">
           <button class="round-btn" type="button" data-action="shuffle-list" data-list="playlist" aria-label="Shuffle" ${tracks.length ? '' : 'disabled'}>${ICON.shuffle}</button>
           <button class="pill-btn" type="button" data-action="play-list" data-list="playlist" ${tracks.length ? '' : 'disabled'}>${ICON.play}<span>Play</span></button>
+          ${isLikedList ? '' : `<button class="round-btn" type="button" data-action="add-songs" data-id="${esc(id)}" aria-label="Add songs">${ICON.plus}</button>`}
+          ${tracks.length ? `<button class="round-btn" type="button" data-action="select" aria-label="Select songs">${ICON.check}</button>` : ''}
         </div>
       </header>
       ${tracks.length ? `<section class="section"><div class="rows">${tracks.map((t, i) => songRow(t, 'playlist', i, { showArt: true, playlistId: id })).join('')}</div></section>`
-        : `<div class="empty small"><p>${isLikedList ? 'Tap ♥ on any song to add it here.' : "Add songs from any song's ··· menu."}</p></div>`}
+        : `<div class="empty small"><p>${isLikedList ? 'Tap ♥ on any song to add it here.' : 'This playlist is empty.'}</p>${isLikedList ? '' : `<button class="pill-btn light" type="button" data-action="add-songs" data-id="${esc(id)}">${ICON.plus}<span>Add songs</span></button>`}</div>`}
     </div>`;
 }
 
@@ -1679,6 +1689,7 @@ function openPlaylistMenu(id) {
       <button class="pill-btn small" type="submit">Rename</button>
     </form>
     <div class="menu-list">
+      <button class="menu-item" type="button" data-pl="add" data-id="${esc(id)}">${ICON.plus}<span>Add songs</span></button>
       <button class="menu-item" type="button" data-pl="queue" data-id="${esc(id)}">${ICON.queue}<span>Add all to queue</span></button>
       <button class="menu-item danger" type="button" data-pl="delete" data-id="${esc(id)}">${ICON.close}<span>Delete playlist</span></button>
     </div>
@@ -1698,6 +1709,7 @@ function onPlaylistMenuEvent(e) {
   const btn = e.type === 'click' && e.target.closest('[data-pl]');
   if (!btn) return;
   const pl = playlists().find((p) => p.id === btn.dataset.id);
+  if (btn.dataset.pl === 'add' && pl) { openAddSongs(pl.id, false); return; }
   if (btn.dataset.pl === 'queue' && pl) { withAuth(() => player.enqueue(playlistTracks(pl))); closeSheet(); toast('Added to the queue.'); }
   if (btn.dataset.pl === 'delete' && pl) {
     if (btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; btn.querySelector('span').textContent = 'Tap again to delete'; return; }
@@ -2152,6 +2164,185 @@ async function autoFixSongs(tracks) {
   orgProgress(`Song info: fixed ${Object.keys(fixes).length} of ${tracks.length}.${unsure.length ? ` ${unsure.length} need your pick below.` : ''}`, tracks.length, tracks.length);
 }
 
+// ================= bulk select =================
+const sel = { on: false, ids: new Set(), playlistId: '' };
+
+function startSelect(firstId) {
+  sel.on = true;
+  sel.ids.clear();
+  const r = route();
+  sel.playlistId = r.name === 'playlist' ? r.id : '';
+  if (firstId) sel.ids.add(firstId);
+  document.body.classList.add('selecting');
+  markSelected();
+}
+
+function endSelect() {
+  sel.on = false;
+  sel.ids.clear();
+  document.body.classList.remove('selecting');
+  markSelected();
+}
+
+function markSelected() {
+  document.querySelectorAll('#main .row[data-id]').forEach((r) => r.classList.toggle('is-selected', sel.ids.has(r.dataset.id)));
+  const bar = $('#selbar');
+  bar.hidden = !sel.on;
+  if (!sel.on) return;
+  const n = sel.ids.size;
+  const inList = sel.playlistId && sel.playlistId !== 'liked';
+  bar.innerHTML = `
+    <div class="selbar-top">
+      <b>${n ? plural(n, 'song') + ' selected' : 'Tap songs to select'}</b>
+      <button class="text-btn" type="button" data-sel="all">Select all</button>
+      <button class="round-btn sm" type="button" data-sel="cancel" aria-label="Done">${ICON.close}</button>
+    </div>
+    <div class="selbar-actions">
+      <button class="pill-btn small light" type="button" data-sel="playlist" ${n ? '' : 'disabled'}>${ICON.plus}<span>Add to playlist</span></button>
+      <button class="pill-btn small" type="button" data-sel="next" ${n ? '' : 'disabled'}>${ICON.playNext}<span>Play next</span></button>
+      <button class="pill-btn small" type="button" data-sel="queue" ${n ? '' : 'disabled'}>${ICON.queue}<span>Queue</span></button>
+      <button class="pill-btn small" type="button" data-sel="like" ${n ? '' : 'disabled'}>${ICON.heart}<span>Like</span></button>
+      ${inList ? `<button class="pill-btn small danger" type="button" data-sel="remove" ${n ? '' : 'disabled'}>${ICON.close}<span>Remove</span></button>` : ''}
+    </div>`;
+}
+
+/** Songs currently shown in the main list, in order. */
+const visibleIds = () => [...new Set([...document.querySelectorAll('#main .row[data-id]')].map((r) => r.dataset.id))];
+const selectedTracks = () => visibleIds().filter((id) => sel.ids.has(id)).map((id) => lib.tracksById[id]).filter(Boolean);
+
+function onSelbar(e) {
+  const act = e.target.closest('[data-sel]')?.dataset.sel;
+  if (!act) return;
+  const tracks = selectedTracks();
+  if (act === 'cancel') { endSelect(); return; }
+  if (act === 'all') {
+    const all = visibleIds();
+    const every = all.every((id) => sel.ids.has(id));
+    sel.ids = new Set(every ? [] : all);
+    markSelected();
+    return;
+  }
+  if (!tracks.length) return;
+  if (act === 'playlist') { openPlaylistPicker(tracks.map((t) => t.id)); return; }
+  if (act === 'next') { withAuth(() => player.enqueue(tracks, { next: true })); toast(`${plural(tracks.length, 'song')} play next.`); }
+  if (act === 'queue') { withAuth(() => player.enqueue(tracks)); toast(`Added ${plural(tracks.length, 'song')} to the queue.`); }
+  if (act === 'like') { const n = likeMany(tracks.map((t) => t.key)); toast(n ? `Added ${plural(n, 'song')} to Liked songs.` : 'Already liked.'); }
+  if (act === 'remove') { removeManyFromPlaylist(sel.playlistId, tracks.map((t) => t.key)); toast(`Removed ${plural(tracks.length, 'song')}.`); }
+  endSelect();
+}
+
+// Long-press a song to start selecting (phones), right-click on computers.
+let pressTimer = 0;
+let pressed = false;
+function wireLongPress() {
+  const main = $('#main');
+  main.addEventListener('pointerdown', (e) => {
+    const row = e.target.closest('.row[data-id]');
+    if (!row || sel.on || e.target.closest('button') || e.pointerType === 'mouse') return;
+    pressed = false;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => { pressed = true; navigator.vibrate?.(15); startSelect(row.dataset.id); }, 500);
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave', 'pointermove']) {
+    main.addEventListener(ev, (e) => { if (ev !== 'pointermove' || Math.abs(e.movementY) > 4) clearTimeout(pressTimer); });
+  }
+  main.addEventListener('contextmenu', (e) => {
+    const row = e.target.closest('.row[data-id]');
+    if (!row) return;
+    e.preventDefault();
+    if (!sel.on) startSelect(row.dataset.id);
+  });
+  // While selecting, a tap on a row toggles it instead of playing.
+  main.addEventListener('click', (e) => {
+    const row = e.target.closest('.row[data-id]');
+    if (pressed) { pressed = false; e.stopPropagation(); e.preventDefault(); return; }
+    if (!sel.on || !row) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const id = row.dataset.id;
+    if (sel.ids.has(id)) sel.ids.delete(id); else sel.ids.add(id);
+    markSelected();
+  }, true);
+  $('#selbar').addEventListener('click', onSelbar);
+}
+
+// ================= add songs to a playlist (bulk) =================
+const addSongs = { playlistId: '', picked: new Set(), q: '' };
+
+function openAddSongs(playlistId, push = true) {
+  const pl = playlists().find((p) => p.id === playlistId);
+  if (!pl) return;
+  if (addSongs.playlistId !== playlistId) Object.assign(addSongs, { playlistId, picked: new Set(), q: '' });
+  const inList = new Set(pl.keys);
+  const q = addSongs.q.toLowerCase();
+  const has = (s) => String(s || '').toLowerCase().includes(q);
+  const list = lib.tracks.filter((t) => !q || has(t.title) || has(t.artist) || has(t.album));
+  const n = addSongs.picked.size;
+  const html = `
+    <input id="add-search" class="set-input" type="search" placeholder="Search songs, artists, albums" value="${esc(addSongs.q)}" autocomplete="off">
+    <div class="add-tools">
+      <span>${plural(list.length, 'song')}${q ? ' found' : ''}</span>
+      <button class="text-btn" type="button" data-add="all">${list.every((t) => inList.has(t.key) || addSongs.picked.has(t.key)) ? 'Clear' : 'Select all'}</button>
+    </div>
+    <div class="rows add-rows">${list.slice(0, 400).map((t) => {
+      const already = inList.has(t.key);
+      const on = already || addSongs.picked.has(t.key);
+      return `<button class="row pick ${on ? 'is-selected' : ''} ${already ? 'already' : ''}" type="button" data-add="toggle" data-key="${esc(t.key)}" ${already ? 'disabled' : ''}>
+        <span class="check" aria-hidden="true"></span>
+        <span class="art sm" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></span>
+        <span class="row-text"><b>${esc(t.title)}</b><small>${esc(already ? 'Already in this playlist' : [t.artist, t.album].filter(Boolean).join(' · '))}</small></span>
+      </button>`;
+    }).join('')}</div>
+    <div class="add-footer"><button class="pill-btn light" type="button" data-add="save" ${n ? '' : 'disabled'}>${n ? `Add ${plural(n, 'song')}` : 'Select songs to add'}</button></div>`;
+  openSheet('add-songs', `Add to "${pl.name}"`, html, push);
+}
+
+let addSearchTimer = 0;
+function onAddSongsEvent(e) {
+  if (sheetKind !== 'add-songs') return;
+  if (e.type === 'input' && e.target.id === 'add-search') {
+    clearTimeout(addSearchTimer);
+    addSearchTimer = setTimeout(() => {
+      addSongs.q = e.target.value.trim();
+      openAddSongs(addSongs.playlistId, false);
+      const input = $('#add-search');
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }, 200);
+    return;
+  }
+  if (e.type !== 'click') return;
+  const btn = e.target.closest('[data-add]');
+  if (!btn || btn.disabled) return;
+  const act = btn.dataset.add;
+  if (act === 'toggle') {
+    const k = btn.dataset.key;
+    if (addSongs.picked.has(k)) addSongs.picked.delete(k); else addSongs.picked.add(k);
+    btn.classList.toggle('is-selected', addSongs.picked.has(k));
+    const n = addSongs.picked.size;
+    const save = $('#sheet-body [data-add="save"]');
+    save.disabled = !n;
+    save.textContent = n ? `Add ${plural(n, 'song')}` : 'Select songs to add';
+    return;
+  }
+  if (act === 'all') {
+    const keys = [...document.querySelectorAll('#sheet-body [data-add="toggle"]:not([disabled])')].map((b) => b.dataset.key);
+    const every = keys.every((k) => addSongs.picked.has(k));
+    for (const k of keys) { if (every) addSongs.picked.delete(k); else addSongs.picked.add(k); }
+    openAddSongs(addSongs.playlistId, false);
+    return;
+  }
+  if (act === 'save') {
+    const pl = playlists().find((p) => p.id === addSongs.playlistId);
+    // Keep library order for the new songs.
+    const keys = lib.tracks.map((t) => t.key).filter((k) => addSongs.picked.has(k));
+    const added = addToPlaylist(addSongs.playlistId, keys);
+    addSongs.picked.clear();
+    closeSheet();
+    toast(`Added ${plural(added, 'song')} to "${pl?.name}".`);
+  }
+}
+
 // ================= organize =================
 const hasLyrics = (t) => !!(t.lrcId || first(t.meta, 'LYRICS') || t.meta?.syncedLyrics?.length);
 const org = { busy: false, log: '', done: 0, total: 0 };
@@ -2417,6 +2608,8 @@ function wireStaticUi() {
     else if (action === 'allow-local') allowLocal(el.dataset.src);
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
+    else if (action === 'select') { if (sel.on) endSelect(); else startSelect(); }
+    else if (action === 'add-songs') openAddSongs(el.dataset.id);
     else if (action === 'new-playlist') { openPlaylistPicker([]); $('#sheet-title').textContent = 'New playlist'; }
     else if (action === 'playlist-menu') openPlaylistMenu(el.dataset.id);
     else if (action === 'analyze') { const t = lib.tracksById[el.dataset.id]; if (t) runAnalysis(t, el); }
@@ -2444,6 +2637,8 @@ function wireStaticUi() {
   body.addEventListener('click', onPlaylistMenuEvent);
   body.addEventListener('submit', onPlaylistMenuEvent);
   body.addEventListener('click', onSleepEvent);
+  body.addEventListener('click', onAddSongsEvent);
+  body.addEventListener('input', onAddSongsEvent);
   body.addEventListener('submit', onEditEvent);
   body.addEventListener('submit', onFixEvent);
   body.addEventListener('change', onOrganizeEvent);
@@ -2484,6 +2679,7 @@ function wireStaticUi() {
     openEdit(editState.trackId, false);
   });
   wireDragDrop();
+  wireLongPress();
 
   $('#mini-open').addEventListener('click', () => setNowOpen(true));
   $('#np-close').innerHTML = ICON.down;
@@ -2560,7 +2756,7 @@ function wireStaticUi() {
       return;
     }
     if (e.key === ' ' && !e.target.matches?.('.row[role="button"], button, .ly, .drop-zone')) { e.preventDefault(); withAuth(() => player.toggle()); }
-    else if (e.key === 'Escape') { if (sheetKind) closeSheet(); else if (nowOpen) setNowOpen(false); }
+    else if (e.key === 'Escape') { if (sheetKind) closeSheet(); else if (nowOpen) setNowOpen(false); else if (sel.on) endSelect(); }
     else if (e.key === 'ArrowRight' && e.shiftKey) player.next();
     else if (e.key === 'ArrowLeft' && e.shiftKey) player.prev();
   });

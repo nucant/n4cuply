@@ -792,3 +792,37 @@ body { touch-action: manipulation; }
   input, select, textarea, .search input, .set-input { font-size: 16px !important; }
 }
 .now, .sheet { will-change: transform; }
+
+/* ---------- v1.8: bulk select ---------- */
+.row .check { display: none; }
+body.selecting #main .row .check, .row.pick .check {
+  display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .45); transition: background .15s ease, border-color .15s ease;
+}
+.row.is-selected .check { background: #fff; border-color: #fff; }
+.row.is-selected .check::after { content: ""; width: 6px; height: 11px; border: solid #111; border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
+body.selecting #main .row.is-selected { background: rgba(255, 255, 255, .08); }
+body.selecting #main .row .row-end .more { visibility: hidden; }
+body.selecting .mini { display: none !important; }
+
+.selbar {
+  position: fixed; z-index: 25; left: 8px; right: 8px; bottom: calc(8px + var(--safe-b));
+  max-width: 760px; margin: 0 auto; padding: 12px; border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, .1); box-shadow: 0 16px 40px rgba(0, 0, 0, .55);
+  display: grid; gap: 10px; animation: sheetUp .25s var(--ease);
+}
+.selbar-top { display: flex; align-items: center; gap: 12px; }
+.selbar-top b { flex: 1; font-size: 15px; }
+.selbar-actions { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.selbar-actions::-webkit-scrollbar { display: none; }
+body.selecting .main { padding-bottom: calc(150px + var(--safe-b)); }
+
+.add-tools { display: flex; justify-content: space-between; align-items: center; margin: 10px 2px 4px; color: var(--text-2); font-size: 13px; }
+.add-rows .row { width: 100%; margin: 0; }
+.row.pick.already { opacity: .5; }
+.add-footer { position: sticky; bottom: 0; padding: 12px 0 4px; background: linear-gradient(transparent, color-mix(in srgb, var(--tint-deep) 55%, rgba(18, 18, 24, .95)) 30%); }
+.add-footer .pill-btn { width: 100%; }
+@media (max-width: 440px) {
+  .home-actions .narrow-icon-xs { width: 42px; padding: 0; }
+  .home-actions .narrow-icon-xs span { display: none; }
+}

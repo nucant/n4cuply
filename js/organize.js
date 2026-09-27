@@ -155,6 +155,16 @@ export function toggleLike(key) {
   return !!rules.likes[key];
 }
 
+/** Likes many songs at once. Returns how many were newly liked. */
+export function likeMany(keys) {
+  rules.likes = rules.likes || {};
+  let n = 0;
+  const at = Date.now();
+  keys.forEach((k, i) => { if (!rules.likes[k]) { rules.likes[k] = at + i; n++; } });
+  if (n) touch();
+  return n;
+}
+
 export const playlists = () => rules.playlists || [];
 
 export function createPlaylist(name, keys = []) {
@@ -178,6 +188,14 @@ export function removeFromPlaylist(id, key) {
   const pl = playlists().find((p) => p.id === id);
   if (!pl) return;
   pl.keys = pl.keys.filter((k) => k !== key);
+  touch();
+}
+
+export function removeManyFromPlaylist(id, keys) {
+  const pl = playlists().find((p) => p.id === id);
+  if (!pl) return;
+  const drop = new Set(keys);
+  pl.keys = pl.keys.filter((k) => !drop.has(k));
   touch();
 }
 
