@@ -11,8 +11,11 @@ import {
 } from './js/sources.js';
 import {
   analyze, mergeArtists, mergeAlbums, ignore, resetRules, getRules, adoptRules, onRulesChange, RULES_FILE,
+  setTrackFix, setTrackFixes, clearTrackFix,
 } from './js/organize.js';
-import { findLyrics, findCover } from './js/online.js';
+import {
+  findLyrics, findCover, findSongMatches, searchTermFor, isConfident,
+} from './js/online.js';
 import { first, techLine, qualityBadge, qualityTag } from './js/meta.js';
 import { loadCover, peekCover, applyTint } from './js/covers.js';
 import { lyricsFor, activeLine } from './js/lyrics.js';
@@ -20,7 +23,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -538,6 +541,7 @@ function songRow(t, list, i, { number = false, showArt = false, hideArtist = fal
       <span class="row-end">
         ${t.meta && !t.meta.error ? qualityChip(t.meta) : `<span class="q">${esc(t.ext)}</span>`}
         <span class="dur">${t.duration ? fmt(t.duration) : ''}</span>
+        <button class="more fix" type="button" data-action="fix-track" data-id="${esc(t.id)}" aria-label="Fix info and cover" title="Fix info & cover">${ICON.wand}</button>
         <button class="more" type="button" data-action="track-info" data-id="${esc(t.id)}" aria-label="Song info">${ICON.more}</button>
       </span>
     </div>`;
@@ -966,7 +970,8 @@ function openTrackInfo(id, push = true) {
       <span class="art" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></span>
       <div><b>${esc(t.title)}</b><small>${esc([t.artist, t.album].filter(Boolean).join(' · '))}</small>
       <span class="chips">${m && !m.error ? qualityChip(m) : ''}</span></div>
-    </div>`;
+    </div>
+    <div class="set-buttons"><button class="pill-btn small light" type="button" data-action="fix-track" data-id="${esc(t.id)}">${ICON.wand}<span>Fix info &amp; cover</span></button>${t.fixed ? '<span class="q lossless">Fixed by you</span>' : ''}</div>`;
   if (!m) {
     html += "<p class=\"info-note\">This song's info hasn't been read yet. It will show here once the library finishes reading.</p>";
   } else if (m.error) {
@@ -1440,6 +1445,116 @@ function wireDragDrop() {
   });
 }
 
+// ================= fix song info =================
+const fixState = { trackId: '', term: '', results: null, error: '', loading: false };
+
+/** Songs worth fixing: missing core tags or cover, and not fixed by the user yet. */
+const needsFix = (t) => !t.fixed && (!t.meta?.tags?.TITLE || !t.meta?.tags?.ARTIST || !t.meta?.tags?.ALBUM || !t.cover);
+
+function fixFrom(c) {
+  return {
+    title: c.title, artist: c.artist, albumArtist: c.albumArtist, album: c.album, year: c.year,
+    genre: c.genre, trackNo: c.trackNo, discNo: c.discNo, cover: c.cover ? 'url:' + c.cover : '', source: 'itunes:' + c.id,
+  };
+}
+
+async function openFix(trackId, push = true, term) {
+  const t = lib?.tracksById[trackId];
+  if (!t) return;
+  if (fixState.trackId !== trackId || term !== undefined) {
+    Object.assign(fixState, { trackId, term: term ?? searchTermFor(t), results: null, error: '', loading: true });
+    renderFix(push);
+    try {
+      fixState.results = await findSongMatches(t, fixState.term);
+    } catch (e) {
+      fixState.error = e.message || 'Search failed.';
+    }
+    fixState.loading = false;
+    if (fixState.trackId === trackId && sheetKind === 'fix') renderFix(false);
+    return;
+  }
+  renderFix(push);
+}
+
+function renderFix(push) {
+  const t = lib?.tracksById[fixState.trackId];
+  if (!t) return;
+  const r = fixState.results;
+  const label = (c) => (c.score >= 80 ? 'Best match' : c.score >= 50 ? 'Possible' : 'Weak match');
+  const list = fixState.loading ? `<div class="empty small"><div class="loader">${ICON.spinner}</div></div>`
+    : fixState.error ? `<p class="info-note">${esc(fixState.error)}</p>`
+      : !r?.length ? '<p class="info-note">No matches. Try different words above, like the artist and song name.</p>'
+        : `<div class="fix-list">${r.slice(0, 8).map((c, i) => `
+          <button class="fix-cand" type="button" data-fix="apply" data-i="${i}">
+            <img src="${esc(c.thumb)}" alt="" width="56" height="56" loading="lazy">
+            <span class="fix-text"><b>${esc(c.title)}</b><small>${esc(c.artist)}</small><small>${esc([c.album, c.year, c.genre].filter(Boolean).join(' · '))}</small></span>
+            <span class="fix-meta"><span class="q ${c.score >= 80 ? 'lossless' : ''}">${label(c)}</span><small>${c.duration ? fmt(c.duration) : ''}</small></span>
+          </button>`).join('')}</div>`;
+  const html = `
+    <div class="info-hero">
+      <span class="art" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></span>
+      <div><b>${esc(t.title)}</b><small>${esc([t.artist, t.album, t.year].filter(Boolean).join(' · '))}</small>
+      <small>${esc(t.file)}${t.duration ? ' · ' + fmt(t.duration) : ''}</small></div>
+    </div>
+    ${t.fixed ? '<div class="set-row fixed-row"><span><b>You fixed this song</b><small>The original file is unchanged.</small></span><button class="pill-btn small" type="button" data-fix="undo">Undo</button></div>' : ''}
+    <form class="set-inline fix-search" data-form="fix-search">
+      <input id="fix-term" class="set-input" type="search" value="${esc(fixState.term)}" aria-label="Search for this song" autocomplete="off">
+      <button class="pill-btn small" type="submit">Search</button>
+    </form>
+    <p class="info-note">Tap the right match to update title, artist, album, year, genre, track number and cover. Saved to your library file in Drive; the audio file isn't changed.</p>
+    ${list}`;
+  openSheet('fix', 'Fix info & cover', html, push);
+}
+
+function onFixEvent(e) {
+  if (sheetKind !== 'fix') return;
+  if (e.type === 'submit' && e.target.closest('[data-form="fix-search"]')) {
+    e.preventDefault();
+    openFix(fixState.trackId, false, $('#fix-term').value.trim());
+    return;
+  }
+  if (e.type !== 'click') return;
+  const btn = e.target.closest('[data-fix]');
+  if (!btn) return;
+  const t = lib?.tracksById[fixState.trackId];
+  if (!t) return;
+  if (btn.dataset.fix === 'apply') {
+    const c = fixState.results?.[Number(btn.dataset.i)];
+    if (!c) return;
+    setTrackFix(t.key, fixFrom(c));
+    toast(`Updated "${c.title}".`);
+    closeSheet();
+  } else if (btn.dataset.fix === 'undo') {
+    clearTrackFix(t.key);
+    toast('Back to the file’s own info.');
+    closeSheet();
+  }
+}
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Fixes songs whose best match is confident. Returns the ones that need a manual pick. */
+async function autoFixSongs(tracks) {
+  const fixes = {};
+  const unsure = [];
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    orgProgress(`Song info: ${t.title}`, i, tracks.length);
+    try {
+      const matches = await findSongMatches(t);
+      const best = matches[0];
+      if (best && isConfident(t, best)) fixes[t.key] = fixFrom(best);
+      else unsure.push(t.id);
+    } catch (e) {
+      unsure.push(t.id);
+    }
+    if (i < tracks.length - 1) await sleepMs(3200); // iTunes allows ~20 searches a minute
+  }
+  setTrackFixes(fixes);
+  org.unsure = unsure;
+  orgProgress(`Song info: fixed ${Object.keys(fixes).length} of ${tracks.length}.${unsure.length ? ` ${unsure.length} need your pick below.` : ''}`, tracks.length, tracks.length);
+}
+
 // ================= organize =================
 const hasLyrics = (t) => !!(t.lrcId || first(t.meta, 'LYRICS') || t.meta?.syncedLyrics?.length);
 const org = { busy: false, log: '', done: 0, total: 0 };
@@ -1447,12 +1562,13 @@ const org = { busy: false, log: '', done: 0, total: 0 };
 function openOrganize(push = true) {
   if (!lib) return;
   const res = analyze(lib, hasLyrics);
+  res.needFix = lib.tracks.filter(needsFix);
   const issues = res.artists.length + res.albums.length;
   const online = settings.onlineLookup;
   const busy = org.busy;
   const synced = scans.default?.rulesFileId ? 'Fixes are saved to your Drive and sync to your other devices.' : 'Fixes are saved on this device, and to your Drive once upload permission is allowed.';
   const html = `
-    <p class="info-note first">${issues ? `${plural(issues, 'thing')} to tidy up` : 'Artists and albums look tidy.'} · ${plural(res.noCover.length, 'album')} without a cover · ${plural(res.noLyrics.length, 'song')} without lyrics</p>
+    <p class="info-note first">${issues ? `${plural(issues, 'thing')} to tidy up` : 'Artists and albums look tidy.'} · ${plural(res.needFix.length, 'song')} missing info · ${plural(res.noCover.length, 'album')} without a cover · ${plural(res.noLyrics.length, 'song')} without lyrics</p>
     <div class="set-buttons">
       <button class="pill-btn light" type="button" data-org="fix-all" ${busy ? 'disabled' : ''}>${ICON.wand}<span>Fix everything</span></button>
     </div>
@@ -1473,6 +1589,14 @@ function openOrganize(push = true) {
         <div class="org-choices">${g.albums.map((a) => `<div class="org-choice static"><span>${esc(a.name)}</span><small>${esc(a.artist || '')} · ${plural(a.tracks.length, 'song')} · ${esc(a.tracks[0].path)}</small></div>`).join('')}</div>
         <div class="org-actions"><button class="pill-btn small light" type="button" data-org="merge-album">Merge</button><button class="pill-btn small" type="button" data-org="ignore">Keep separate</button></div>
       </div>`).join('')}</div>` : ''}
+
+    <div class="info-group set-group"><h4>Song info</h4>
+      <div class="set-row"><span><b>${plural(res.needFix.length, 'song')} with missing info or cover</b><small>Matches each song on Apple iTunes by its name. Only sure matches are applied automatically.</small></span>
+      <button class="pill-btn small" type="button" data-org="info" ${!res.needFix.length || busy ? 'disabled' : ''}>Fix</button></div>
+      ${(org.unsure || []).map((id) => lib.tracksById[id]).filter((t) => t && !t.fixed).slice(0, 30).map((t) => `
+        <div class="set-row"><span><b>${esc(t.title)}</b><small>${esc(t.file)}</small></span>
+        <button class="pill-btn small" type="button" data-action="fix-track" data-id="${esc(t.id)}">Choose</button></div>`).join('')}
+    </div>
 
     <div class="info-group set-group"><h4>Covers</h4>
       <div class="set-row"><span><b>${plural(res.noCover.length, 'album')} without a cover</b><small>${res.noCover.slice(0, 4).map((a) => esc(a.name)).join(', ')}${res.noCover.length > 4 ? '…' : ''}${res.noCover.length ? '' : 'All albums have covers.'}</small></span>
@@ -1576,6 +1700,10 @@ async function runOrganize(kind) {
       for (const g of res.albums) mergeAlbums(g.albums.map((a) => a.key), g.target);
       orgProgress(`Merged ${plural(res.artists.length, 'artist group')} and ${plural(res.albums.length, 'album')}.`, 1, 1);
     }
+    if (kind === 'info' || (kind === 'all' && settings.onlineLookup)) {
+      const todo = lib.tracks.filter(needsFix);
+      if (todo.length) await autoFixSongs(todo);
+    }
     if (settings.onlineLookup && (kind === 'all' || kind === 'covers')) {
       const fresh = analyze(lib, hasLyrics).noCover;
       if (fresh.length) for (const id of await findCovers(fresh)) touched.add(id);
@@ -1620,7 +1748,7 @@ function onOrganizeEvent(e) {
   } else if (act === 'fix-all') {
     runOrganize('all');
     return;
-  } else if (act === 'covers' || act === 'lyrics') {
+  } else if (act === 'covers' || act === 'lyrics' || act === 'info') {
     runOrganize(act);
     return;
   }
@@ -1667,6 +1795,7 @@ function wireStaticUi() {
     if (!el) return;
     const action = el.dataset.action;
     if (action === 'track-info') { e.stopPropagation(); openTrackInfo(el.dataset.id); return; }
+    if (action === 'fix-track') { e.stopPropagation(); openFix(el.dataset.id, sheetKind !== 'info'); return; }
     const list = lists[el.dataset.list] || [];
     if (action === 'play-track') withAuth(() => player.playList(list, Number(el.dataset.i), { shuffle: player.state.shuffle }));
     else if (action === 'play-list') withAuth(() => player.playList(list, 0, { shuffle: false }));
@@ -1690,6 +1819,8 @@ function wireStaticUi() {
   body.addEventListener('submit', onSettingsSubmit);
   body.addEventListener('click', onUploadEvent);
   body.addEventListener('click', onOrganizeEvent);
+  body.addEventListener('click', onFixEvent);
+  body.addEventListener('submit', onFixEvent);
   body.addEventListener('change', onOrganizeEvent);
   body.addEventListener('change', onUploadEvent);
   body.addEventListener('click', (e) => {

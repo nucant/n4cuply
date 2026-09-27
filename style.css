@@ -617,3 +617,22 @@ select.set-input { appearance: auto; }
 .org-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .text-btn.pad { display: block; margin: 12px auto 4px; }
 .set-buttons.center { justify-content: center; }
+
+/* ---------- v1.5: fix song info ---------- */
+.row .more.fix { color: var(--text-3); }
+.row .more.fix:hover { color: #fff; }
+.fix-search { margin-top: 12px; }
+.fix-list { display: grid; gap: 6px; margin-top: 12px; }
+.fix-cand {
+  display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 12px; text-align: left;
+  padding: 8px; border-radius: 12px; background: rgba(255, 255, 255, .05); transition: background .15s ease;
+}
+.fix-cand:hover { background: rgba(255, 255, 255, .11); }
+.fix-cand img { width: 56px; height: 56px; border-radius: 6px; object-fit: cover; background: var(--bg-3); }
+.fix-text { display: grid; gap: 1px; min-width: 0; }
+.fix-text b { font-weight: 600; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fix-text small { color: var(--text-2); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fix-meta { display: grid; justify-items: end; gap: 4px; }
+.fix-meta small { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.fixed-row { margin-top: 8px; border-radius: 12px; background: rgba(52, 199, 89, .1); border: 1px solid rgba(52, 199, 89, .25); }
+.info-hero small + small { font-size: 12px; color: var(--text-3); }

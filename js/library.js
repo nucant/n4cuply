@@ -4,7 +4,9 @@ import { getFolder, listChildren, FOLDER_MIME, AuthError } from './drive.js';
 import { RangeReader, readMeta, META_VERSION, first, pickPicture, qualityTag } from './meta.js';
 import { idbGetAll, idbPut, idbClear } from './store.js';
 import { accountOf, localHandle, localPermission, localId, rememberFileHandle, readRange } from './sources.js';
-import { aliasArtist, albumTarget, getRules, artistKey, looseTitle, RULES_FILE } from './organize.js';
+import {
+  aliasArtist, albumTarget, getRules, artistKey, looseArtist, primaryArtist, looseTitle, trackKeyOf, RULES_FILE,
+} from './organize.js';
 
 const AUDIO_RE = /\.(mp3|m4a|m4b|mp4|aac|alac|wav|ogg|oga|opus|flac|webm)$/i;
 const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
@@ -233,14 +235,38 @@ function mostCommon(list) {
 }
 
 /**
- * scans: array of scan results (one per source). Albums never mix sources
- * (they're keyed by folder), but artists and songs span all of them.
+ * Picks one display name per artist. Names that only differ by case, spacing,
+ * accents or a title like "Ustad" are the same artist; "A & Party" or
+ * "A feat. B" count as A when A is also in the library. Returns name -> name.
+ */
+function canonicalArtists(counts) {
+  const groups = new Map(); // loose key -> { best, n, names }
+  for (const [name, n] of counts) {
+    const k = looseArtist(name) || artistKey(name);
+    if (!groups.has(k)) groups.set(k, { names: new Map() });
+    groups.get(k).names.set(name, n);
+  }
+  for (const g of groups.values()) {
+    g.best = [...g.names].sort((x, y) => y[1] - x[1] || x[0].length - y[0].length)[0][0];
+  }
+  const out = new Map();
+  for (const [k, g] of groups) {
+    const primary = looseArtist(primaryArtist(g.best));
+    const target = primary && primary !== k && groups.has(primary) ? groups.get(primary).best : g.best;
+    for (const name of g.names.keys()) out.set(name, target);
+  }
+  return out;
+}
+
+/**
+ * scans: array of scan results (one per source). Songs, albums and artists
+ * are built across all of them, with the user's fixes (rules) applied.
  */
 export function build(scans) {
-  const albumsByKey = new Map();
   const tracksById = {};
   const tracks = [];
   const folders = {};
+  const rules = getRules();
   refs.clear();
   for (const scan of scans) {
     for (const [id, fo] of Object.entries(scan.folders)) {
@@ -255,18 +281,19 @@ export function build(scans) {
   const allFiles = ordered.flatMap((s) => s.files.map((f) => ({ ...f, src: f.src || s.srcId, rootName: s.rootName })));
   const seen = new Set();
 
+  // 1. Songs, with tags and the user's per-song fixes.
   for (const f of allFiles) {
-    // The same file can appear in two sources (a folder inside another); keep one.
-    const same = `${f.name.toLowerCase()}|${f.size}`;
-    if (tracksById[f.id] || seen.has(same)) continue;
-    seen.add(same);
+    const key = trackKeyOf(f.name, f.size);
+    if (tracksById[f.id] || seen.has(key)) continue; // same song in two sources
+    seen.add(key);
     refs.set(f.id, f.src);
     const folder = folders[f.folderId] || { name: f.rootName, path: f.rootName };
     const m = metaMap.get(f.id);
-    const tagAlbum = first(m, 'ALBUM');
-    const artist = aliasArtist(first(m, 'ARTIST'));
+    const fix = rules.tracks?.[key] || {};
+    const artist = aliasArtist(fix.artist || first(m, 'ARTIST'));
     const t = {
       id: f.id,
+      key,
       src: f.src,
       file: f.name,
       size: f.size,
@@ -276,39 +303,59 @@ export function build(scans) {
       path: folder.path,
       ext: (f.name.match(/\.([^.]+)$/) || [, ''])[1].toUpperCase(),
       meta: m || null,
-      title: first(m, 'TITLE') || cleanTitle(f.name),
+      fixed: !!fix.at,
+      tagAlbum: fix.album || first(m, 'ALBUM'),
+      title: fix.title || first(m, 'TITLE') || cleanTitle(f.name),
       artist,
-      albumArtist: aliasArtist(first(m, 'ALBUMARTIST')) || artist,
-      album: tagAlbum || folder.name,
-      trackNo: parseInt(first(m, 'TRACKNUMBER'), 10) || 0,
-      discNo: parseInt(first(m, 'DISCNUMBER'), 10) || 1,
-      year: (first(m, 'DATE') || first(m, 'ORIGINALDATE')).slice(0, 4),
-      genre: first(m, 'GENRE'),
+      albumArtist: aliasArtist(fix.albumArtist || first(m, 'ALBUMARTIST')) || artist,
+      trackNo: fix.trackNo || parseInt(first(m, 'TRACKNUMBER'), 10) || 0,
+      discNo: fix.discNo || parseInt(first(m, 'DISCNUMBER'), 10) || 1,
+      year: String(fix.year || first(m, 'DATE') || first(m, 'ORIGINALDATE')).slice(0, 4),
+      genre: fix.genre || first(m, 'GENRE'),
       duration: m?.duration || 0,
       quality: qualityTag(m),
       hasPic: !!pickPicture(m),
+      fixCover: fix.cover || '',
       lrcId: '',
     };
+    t.album = t.tagAlbum || folder.name;
     t.lrcId = lrcFor(folder, f.name, t.title);
-    // Same album title + album artist = one album, even across folders
-    // (CD1/CD2 folders, or a copy in Drive and on the PC).
-    const autoKey = tagAlbum && t.albumArtist ? `a:${artistKey(t.albumArtist)}|${norm(tagAlbum)}` : `${f.folderId}|${norm(tagAlbum)}`;
-    t.albumKey = albumTarget(autoKey);
     tracksById[t.id] = t;
     tracks.push(t);
-    if (!albumsByKey.has(t.albumKey)) albumsByKey.set(t.albumKey, { key: t.albumKey, folderId: f.folderId, src: f.src, tracks: [] });
+  }
+
+  // 2. One name per artist.
+  const counts = new Map();
+  for (const t of tracks) {
+    for (const n of [t.albumArtist, t.artist]) if (n) counts.set(n, (counts.get(n) || 0) + 1);
+  }
+  const canon = canonicalArtists(counts);
+  for (const t of tracks) {
+    if (t.albumArtist) t.albumArtist = canon.get(t.albumArtist) || t.albumArtist;
+    // Keep "A feat. B" on the song itself, but fix spelling variants.
+    const c = canon.get(t.artist);
+    if (c && looseArtist(c) === looseArtist(t.artist)) t.artist = c;
+    if (!t.albumArtist) t.albumArtist = c || t.artist;
+  }
+
+  // 3. Albums: same title + album artist = one album, even across folders
+  // (CD1/CD2, or a copy in Drive and on the PC).
+  const albumsByKey = new Map();
+  for (const t of tracks) {
+    const autoKey = t.tagAlbum && t.albumArtist ? `a:${looseArtist(t.albumArtist)}|${norm(t.tagAlbum)}` : `${t.folderId}|${norm(t.tagAlbum)}`;
+    t.albumKey = albumTarget(autoKey);
+    if (!albumsByKey.has(t.albumKey)) albumsByKey.set(t.albumKey, { key: t.albumKey, folderId: t.folderId, src: t.src, tracks: [] });
     albumsByKey.get(t.albumKey).tracks.push(t);
   }
 
   const albums = [];
   for (const a of albumsByKey.values()) {
     a.tracks.sort((x, y) => (x.discNo - y.discNo) || ((x.trackNo || 999) - (y.trackNo || 999)) || byName(x.file, y.file));
-    a.tracks.forEach((t, i) => { if (!t.trackNo) t.n = i + 1; else t.n = t.trackNo; });
+    a.tracks.forEach((t, i) => { t.n = t.trackNo || i + 1; });
     const t0 = a.tracks[0];
-    const folder = folders[a.folderId];
-    const aa = mostCommon(a.tracks.map((t) => artistKey(t.albumArtist)));
+    const aa = mostCommon(a.tracks.map((t) => t.albumArtist));
     a.name = t0.album;
-    a.artist = aa.distinct > 1 ? 'Various Artists' : (a.tracks.find((t) => artistKey(t.albumArtist) === aa.value)?.albumArtist || '');
+    a.artist = aa.distinct > 1 ? 'Various Artists' : aa.value;
     a.year = a.tracks.map((t) => t.year).filter(Boolean).sort()[0] || '';
     a.genre = mostCommon(a.tracks.map((t) => t.genre)).value;
     a.duration = a.tracks.reduce((s, t) => s + (t.duration || 0), 0);
@@ -319,38 +366,31 @@ export function build(scans) {
     a.lossless = a.tracks.every((t) => t.meta?.lossless);
     a.label = first(t0.meta, 'LABEL');
     a.copyright = first(t0.meta, 'COPYRIGHT');
+    const fixedCover = a.tracks.find((t) => t.fixCover)?.fixCover;
     const withPic = a.tracks.find((t) => t.hasPic);
     const folderImage = a.tracks.map((t) => folders[t.folderId]?.image).find(Boolean);
-    a.cover = getRules().covers[a.key] || (withPic ? `pic:${withPic.id}` : folderImage ? `file:${folderImage}` : '');
+    a.cover = rules.covers[a.key] || fixedCover || (withPic ? `pic:${withPic.id}` : folderImage ? `file:${folderImage}` : '');
     a.id = a.key;
     for (const t of a.tracks) {
       t.albumName = a.name;
-      t.cover = t.hasPic ? `pic:${t.id}` : a.cover;
+      t.cover = t.fixCover || (t.hasPic ? `pic:${t.id}` : a.cover);
       if (!t.artist) t.artist = a.artist || '';
     }
     albums.push(a);
   }
   albums.sort((x, y) => byName(x.name, y.name));
 
-  const artistsByKey = new Map();
+  // 4. Artists (by album artist, already unified above).
+  const artistsByName = new Map();
   for (const t of tracks) {
     const name = t.albumArtist || t.artist;
     if (!name) continue;
-    const k = artistKey(name);
-    if (!artistsByKey.has(k)) artistsByKey.set(k, { spellings: new Map(), tracks: [], albumKeys: new Set() });
-    const ar = artistsByKey.get(k);
-    ar.spellings.set(name, (ar.spellings.get(name) || 0) + 1);
+    if (!artistsByName.has(name)) artistsByName.set(name, { name, tracks: [], albumKeys: new Set() });
+    const ar = artistsByName.get(name);
     ar.tracks.push(t);
     ar.albumKeys.add(t.albumKey);
   }
-  for (const ar of artistsByKey.values()) {
-    ar.name = [...ar.spellings].sort((x, y) => y[1] - x[1])[0][0];
-    for (const t of ar.tracks) {
-      if (t.albumArtist && artistKey(t.albumArtist) === artistKey(ar.name)) t.albumArtist = ar.name;
-      if (t.artist && artistKey(t.artist) === artistKey(ar.name)) t.artist = ar.name;
-    }
-  }
-  const artists = [...artistsByKey.values()].map(({ spellings, ...ar }) => ({
+  const artists = [...artistsByName.values()].map((ar) => ({
     ...ar,
     albums: albums.filter((al) => ar.albumKeys.has(al.key)),
     cover: albums.find((al) => ar.albumKeys.has(al.key) && al.cover)?.cover || '',

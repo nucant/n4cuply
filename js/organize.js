@@ -58,7 +58,7 @@ function lev(a, b) {
 
 // ---------------------------------------------------------------- rules
 function emptyRules() {
-  return { v: 1, updatedAt: 0, artists: {}, albums: {}, covers: {}, ignored: [] };
+  return { v: 1, updatedAt: 0, artists: {}, albums: {}, covers: {}, tracks: {}, ignored: [] };
 }
 
 let rules = loadRules();
@@ -120,6 +120,29 @@ export function setAlbumCover(albumKey, coverId) {
   rules.covers[albumKey] = coverId;
   touch();
 }
+
+/** Stable id for a song across devices and sources: file name + size. */
+export const trackKeyOf = (fileName, size) => `${String(fileName).toLowerCase()}|${size}`;
+
+/** Per-song fix: { title, artist, albumArtist, album, year, genre, trackNo, discNo, cover, source }. */
+export function setTrackFix(key, fix) {
+  rules.tracks[key] = { ...fix, at: Date.now() };
+  touch();
+}
+
+/** Many fixes at once (one rebuild). */
+export function setTrackFixes(map) {
+  const at = Date.now();
+  for (const [key, fix] of Object.entries(map)) rules.tracks[key] = { ...fix, at };
+  if (Object.keys(map).length) touch();
+}
+
+export function clearTrackFix(key) {
+  delete rules.tracks[key];
+  touch();
+}
+
+export const trackFix = (key) => rules.tracks[key] || null;
 
 export function ignore(id) {
   if (!rules.ignored.includes(id)) rules.ignored.push(id);

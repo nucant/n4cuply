@@ -37,7 +37,11 @@ async function load(coverId, getTrack) {
   if (cached?.blob) return { url: URL.createObjectURL(cached.blob), color: cached.color };
 
   let blob;
-  if (kind === 'pic') {
+  if (kind === 'url') {
+    const res = await fetch(id);
+    if (!res.ok) return null;
+    blob = await res.blob();
+  } else if (kind === 'pic') {
     const t = getTrack(id);
     let bytes = new Uint8Array(await readRange({ id: t.id, src: t.src }, pic.off, pic.off + pic.len - 1));
     if (pic.unsync) bytes = deUnsync(bytes);
