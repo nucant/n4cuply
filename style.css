@@ -1595,3 +1595,37 @@ body.layout-phone .ly { font-size: clamp(21px, 5.6vw, 26px); }
 body.layout-phone .ly.on { transform: none; }
 .lyrics { overflow-wrap: anywhere; }
 .dash-lyric { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+
+/* ================= v2.10: Now Playing always fits the phone screen ================= */
+/* Never scroll sideways; no visible scrollbar. */
+.np-layout { overflow-x: hidden; scrollbar-width: none; }
+.np-layout::-webkit-scrollbar { display: none; }
+.np-art-wrap, .np-deck { overflow: visible; }
+.now:not(.style-default) .np-art-wrap { overflow-x: clip; }
+
+/* Phone: the art / deck takes only the space left after the controls. */
+body.np-narrow .np-layout { height: 100%; min-height: 0; }
+body.np-narrow .np-art-wrap { flex: 1 1 0; min-height: 0; }
+body.np-narrow .np-art { min-height: 0; }
+body.np-narrow .now:not(.style-default) .np-art-wrap {
+  flex: 1 1 0; min-height: 0; container-type: size;
+  display: grid; place-items: center; padding: calc(64px + var(--safe-t)) 0 4px;
+}
+body.np-narrow .now:not(.style-default) .np-deck { height: 100%; }
+body.np-narrow .deck.vinyl { width: min(86vw, 520px, 96cqh); }
+body.np-narrow .deck.cassette { width: min(86vw, 520px, 150cqh); aspect-ratio: auto; }
+body.np-narrow .deck.vintage { width: min(86vw, 520px, 150cqh); aspect-ratio: auto; }
+body.np-narrow .now:not(.style-default) .np-body { margin-top: 10px; }
+
+/* Short screens (small phones, or browser bars taking space): tighter spacing. */
+@media (max-height: 760px) {
+  body.np-narrow .np-body { gap: 8px; padding-bottom: calc(14px + var(--safe-b)); }
+  body.np-narrow .np-titles h2 { font-size: 21px; }
+  body.np-narrow .np-artist { font-size: 18px; }
+  body.np-narrow .np-lyric { font-size: 15px; }
+  body.np-narrow .np-controls { margin: 0; }
+  body.np-narrow .np-bottom .icon-btn { height: 40px; }
+}
+@media (max-height: 640px) {
+  body.np-narrow .np-lyric { display: none; }
+}

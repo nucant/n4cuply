@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.9'; // keep in sync with version.json
+const APP_VERSION = '2.10'; // keep in sync with version.json
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
