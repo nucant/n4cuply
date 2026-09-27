@@ -110,7 +110,26 @@ export async function uploadFile(file, parentId, account, onProgress, signal) {
   }, account);
   const session = init.headers.get('Location');
   if (!session) throw new Error("Drive didn't start the upload. Try again.");
+  return putToSession(session, file, onProgress, signal);
+}
 
+/** Replaces a file's content (resumable, with progress). Drive keeps the old version in its history. */
+export async function updateFileResumable(id, blob, account, onProgress) {
+  const init = await request(withParams('/files/' + encodeURIComponent(id), { uploadType: 'resumable', fields: FILE_FIELDS, supportsAllDrives: 'true' }, UPLOAD_API), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': blob.type || 'application/octet-stream',
+      'X-Upload-Content-Length': String(blob.size),
+    },
+    body: '{}',
+  }, account);
+  const session = init.headers.get('Location');
+  if (!session) throw new Error("Drive didn't start the upload. Try again.");
+  return putToSession(session, blob, onProgress);
+}
+
+function putToSession(session, file, onProgress, signal) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', session);

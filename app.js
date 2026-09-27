@@ -7,7 +7,7 @@ import {
 } from './js/library.js';
 import {
   listSources, sourceById, accountOf, addDriveSource, addLocalSource, removeSource, canAddSource, MAX_EXTRA,
-  localSupported, localPermission, requestLocal, readBlob, saveToFolder, requestLocalWrite,
+  localSupported, localPermission, requestLocal, readBlob, saveToFolder, requestLocalWrite, overwriteFile,
 } from './js/sources.js';
 import {
   analyze, mergeArtists, mergeAlbums, ignore, resetRules, getRules, adoptRules, onRulesChange, RULES_FILE,
@@ -16,14 +16,16 @@ import {
 import {
   findLyrics, findCover, findSongMatches, searchTermFor, isConfident,
 } from './js/online.js';
-import { first, techLine, qualityBadge, qualityTag } from './js/meta.js';
+import { first, techLine, qualityBadge, qualityTag, RangeReader, readMeta } from './js/meta.js';
+import { writeTags, canWriteTags } from './js/tagwrite.js';
+import { artistInfo, peekArtist, artistKnown, warmArtists } from './js/artists.js';
 import { loadCover, peekCover, applyTint } from './js/covers.js';
 import { lyricsFor, activeLine } from './js/lyrics.js';
 import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -47,6 +49,7 @@ const ICON = {
   drive: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5h7l6 10.5-3.5 6h-12L2.5 14z"/><path d="M8.5 3.5l6.5 10.5h6.5M2.5 14h13l-3.5 6"/></svg>',
   pc: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
   wand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20L15 9M14 4v3M19 9h3M17.5 5.5l2-2M12 6.5l1.5 1.5M16 11l1.5 1.5"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -167,8 +170,13 @@ function rebuild() {
   else player.restore(lib);
 }
 
+let queuedRefresh = null;
 async function refreshLibrary({ quiet = false, only = '' } = {}) {
-  if (scanning) return;
+  if (scanning) {
+    // Run again when the current scan ends (after an edit or upload).
+    queuedRefresh = queuedRefresh ? { quiet: queuedRefresh.quiet && quiet, only: queuedRefresh.only === only ? only : '' } : { quiet, only };
+    return;
+  }
   scanning = true;
   scanCount = 0;
   scanError = '';
@@ -213,6 +221,11 @@ async function refreshLibrary({ quiet = false, only = '' } = {}) {
   }
   scanning = false;
   render();
+  if (queuedRefresh) {
+    const next = queuedRefresh;
+    queuedRefresh = null;
+    return refreshLibrary(next);
+  }
   if (hasScans()) {
     pullRules();
     runMetaScan();
@@ -413,8 +426,8 @@ function renderHome(tab) {
       <div class="home-actions">
         <button class="pill-btn light" type="button" data-action="play-list" data-list="all">${ICON.play}<span>Play all</span></button>
         <button class="pill-btn" type="button" data-action="shuffle-list" data-list="all">${ICON.shuffle}<span>Shuffle</span></button>
-        <button class="pill-btn" type="button" data-action="upload">${ICON.upload}<span>Upload</span></button>
-        <button class="pill-btn" type="button" data-action="organize">${ICON.wand}<span>Organize</span></button>
+        <button class="pill-btn narrow-icon" type="button" data-action="upload" aria-label="Upload">${ICON.upload}<span>Upload</span></button>
+        <button class="pill-btn narrow-icon" type="button" data-action="organize" aria-label="Organize">${ICON.wand}<span>Organize</span></button>
       </div>
       ${scanBarHtml()}
     </section>`;
@@ -422,6 +435,15 @@ function renderHome(tab) {
     return head + `<section class="section"><div class="rows">${lib.tracks.map((t, i) => songRow(t, 'all', i, { showArt: true })).join('')}</div></section>`;
   }
   if (tab === 'artists') {
+    // Look each artist up once per session; never loop on artists without a photo.
+    const missing = lib.artists.filter((a) => !artistKnown(a.name) && !artistsTried.has(a.name));
+    if (missing.length) {
+      for (const a of missing) artistsTried.add(a.name);
+      warmArtists(missing.map((a) => a.name)).then(() => {
+        if (settings.artistInfo) missing.filter((a) => !peekArtist(a.name)).forEach((a) => loadArtistInfo(a.name, true));
+        render();
+      });
+    }
     return head + `<section class="section"><div class="artist-list">${lib.artists.map(artistCard).join('')}</div></section>`;
   }
   return head + `<section class="section"><div class="grid">${lib.albums.map(albumCard).join('')}</div></section>`;
@@ -464,24 +486,50 @@ function renderAlbum(a) {
 }
 
 function renderArtist(ar) {
-  lists.artist = ar.tracks.slice().sort((x, y) => x.album.localeCompare(y.album) || x.discNo - y.discNo || x.n - y.n);
-  return `
-    <div class="page" data-tint="${esc(ar.cover)}" data-seed="${esc(ar.name)}">
-      <header class="page-hero artist-hero">
-        <div class="page-top">
-          <button class="round-btn" type="button" data-action="back" aria-label="Back">${ICON.back}</button>
-          <span></span>
+  const info = peekArtist(ar.name);
+  if (!info && !artistFetching.has(ar.name) && !artistsTried.has(ar.name)) {
+    artistsTried.add(ar.name);
+    loadArtistInfo(ar.name, settings.artistInfo);
+  }
+  const byAlbum = ar.tracks.slice().sort((x, y) => x.album.localeCompare(y.album) || x.discNo - y.discNo || x.n - y.n);
+  lists.artist = byAlbum;
+  lists.popular = ar.tracks.slice().sort((x, y) => (plays[y.key] || 0) - (plays[x.key] || 0) || (x.n || 99) - (y.n || 99)).slice(0, 5);
+  const photo = artistPhoto(ar.name);
+  const total = ar.tracks.reduce((s, t) => s + (t.duration || 0), 0);
+  const lossless = ar.tracks.filter((t) => t.meta?.lossless).length;
+  const about = info
+    ? `<div class="about">
+        ${info.thumb ? `<img src="${esc(info.thumb)}" alt="" class="about-img" loading="lazy">` : ''}
+        <div class="about-text">
+          ${info.description ? `<p class="about-desc">${esc(info.description)}</p>` : ''}
+          <p class="about-bio" id="about-bio">${esc(info.bio)}</p>
+          <div class="about-links"><button class="text-btn" type="button" data-action="bio-more">Read more</button>
+          ${info.url ? `<a class="text-btn" href="${esc(info.url)}" target="_blank" rel="noopener">Wikipedia</a>` : ''}</div>
         </div>
-        <div class="art hero-art" data-cover="${esc(ar.cover)}" data-seed="${esc(ar.name)}"></div>
-        <h1>${esc(ar.name)}</h1>
-        <div class="hero-meta">Artist · ${plural(ar.albums.length, 'album')} · ${plural(ar.tracks.length, 'song')}</div>
-        <div class="hero-actions">
-          <button class="round-btn" type="button" data-action="shuffle-list" data-list="artist" aria-label="Shuffle">${ICON.shuffle}</button>
-          <button class="pill-btn" type="button" data-action="play-list" data-list="artist">${ICON.play}<span>Play</span></button>
+      </div>`
+    : artistFetching.has(ar.name) ? `<div class="about muted">Loading bio…</div>`
+      : `<div class="about muted"><span>No bio yet.</span><button class="pill-btn small" type="button" data-action="artist-bio" data-name="${esc(ar.name)}">Get photo &amp; bio from Wikipedia</button></div>`;
+  return `
+    <div class="page artist-page" data-tint="${esc(photo || ar.cover)}" data-seed="${esc(ar.name)}">
+      <header class="artist-top">
+        <div class="art artist-blur" data-cover="${esc(photo || ar.cover)}" data-seed="${esc(ar.name)}" aria-hidden="true"></div>
+        <div class="art artist-photo" data-cover="${esc(photo || ar.cover)}" data-seed="${esc(ar.name)}"></div>
+        <div class="artist-shade"></div>
+        <div class="page-top"><button class="round-btn" type="button" data-action="back" aria-label="Back">${ICON.back}</button><span></span></div>
+        <div class="artist-name">
+          <p class="eyebrow">Artist</p>
+          <h1>${esc(ar.name)}</h1>
+          <p class="hero-meta">${plural(ar.tracks.length, 'song')} · ${plural(ar.albums.length, 'album')}${total ? ' · ' + fmtTotal(total) : ''}${lossless ? ` · ${lossless} lossless` : ''}</p>
         </div>
       </header>
+      <div class="artist-actions">
+        <button class="play-fab" type="button" data-action="play-list" data-list="popular" aria-label="Play">${ICON.play}</button>
+        <button class="round-btn" type="button" data-action="shuffle-list" data-list="artist" aria-label="Shuffle">${ICON.shuffle}</button>
+      </div>
+      <section class="section"><h2 class="section-title">Popular</h2><div class="rows">${lists.popular.map((t, i) => songRow(t, 'popular', i, { showArt: true, hideArtist: true })).join('')}</div></section>
       <section class="section"><h2 class="section-title">Albums</h2><div class="grid">${ar.albums.map(albumCard).join('')}</div></section>
-      <section class="section"><h2 class="section-title">Songs</h2><div class="rows">${lists.artist.map((t, i) => songRow(t, 'artist', i, { showArt: true, hideArtist: true })).join('')}</div></section>
+      <section class="section"><h2 class="section-title">About</h2>${about}</section>
+      ${ar.tracks.length > 5 ? `<section class="section"><h2 class="section-title">All songs</h2><div class="rows">${byAlbum.map((t, i) => songRow(t, 'artist', i, { showArt: true, hideArtist: true })).join('')}</div></section>` : ''}
     </div>`;
 }
 
@@ -519,7 +567,7 @@ function albumCard(a) {
 function artistCard(ar) {
   return `
     <a class="artist-card" href="#artist/${encodeURIComponent(ar.name)}">
-      <div class="art" data-cover="${esc(ar.cover)}" data-seed="${esc(ar.name)}"></div>
+      <div class="art" data-cover="${esc(artistPhoto(ar.name) || ar.cover)}" data-seed="${esc(ar.name)}"></div>
       <b>${esc(ar.name)}</b>
       <small>${plural(ar.tracks.length, 'song')}</small>
     </a>`;
@@ -748,6 +796,7 @@ function updateTime() {
   $('#t-cur').textContent = fmt(cur);
   $('#t-left').textContent = '-' + fmt(Math.max(0, d - cur));
   syncLyrics(a.currentTime);
+  countPlay(player.current(), a.currentTime);
 }
 
 let nowOpen = false;
@@ -971,7 +1020,7 @@ function openTrackInfo(id, push = true) {
       <div><b>${esc(t.title)}</b><small>${esc([t.artist, t.album].filter(Boolean).join(' · '))}</small>
       <span class="chips">${m && !m.error ? qualityChip(m) : ''}</span></div>
     </div>
-    <div class="set-buttons"><button class="pill-btn small light" type="button" data-action="fix-track" data-id="${esc(t.id)}">${ICON.wand}<span>Fix info &amp; cover</span></button>${t.fixed ? '<span class="q lossless">Fixed by you</span>' : ''}</div>`;
+    <div class="set-buttons"><button class="pill-btn small light" type="button" data-action="fix-track" data-id="${esc(t.id)}">${ICON.wand}<span>Fix info &amp; cover</span></button><button class="pill-btn small" type="button" data-action="edit-track" data-id="${esc(t.id)}">${ICON.pencil}<span>Edit</span></button>${t.fixed ? '<span class="q lossless">Fixed by you</span>' : ''}</div>`;
   if (!m) {
     html += "<p class=\"info-note\">This song's info hasn't been read yet. It will show here once the library finishes reading.</p>";
   } else if (m.error) {
@@ -1135,6 +1184,9 @@ async function openSettings(push = true) {
       ${toggleRow('dynamicColor', 'Colors from album art', 'Tint screens with each cover’s colors.')}
       ${toggleRow('showTech', 'Technical line', 'Codec, bitrate, sample rate and bit depth on Now Playing.')}
       ${toggleRow('lyricsPreview', 'Lyric preview', 'Current lyric line under the song title.')}
+      ${toggleRow('writeTags', 'Save edits into music files', 'When you edit or fix a FLAC or MP3, write the new tags and cover into the file itself.')}
+      ${toggleRow('artistInfo', 'Artist photos and bios', 'From Wikipedia. Only artist names are sent.')}
+      ${toggleRow('onlineLookup', 'Find missing lyrics and covers', 'From LRCLIB (lyrics) and Apple iTunes (covers). Only song, artist and album names are sent.')}
     </div>
 
     <div class="info-group set-group">
@@ -1445,6 +1497,224 @@ function wireDragDrop() {
   });
 }
 
+// ================= edit song info (and write it into the file) =================
+const EDIT_FIELDS = [
+  ['TITLE', 'Title', 'title'], ['ARTIST', 'Artist', 'artist'], ['ALBUM', 'Album', 'album'],
+  ['ALBUMARTIST', 'Album artist', 'albumArtist'], ['DATE', 'Year', 'year'], ['GENRE', 'Genre', 'genre'],
+  ['TRACKNUMBER', 'Track no.', 'trackNo'], ['DISCNUMBER', 'Disc no.', 'discNo'],
+];
+const editState = { trackId: '', coverBlob: null, coverUrl: '' };
+
+function openEdit(trackId, push = true) {
+  const t = lib?.tracksById[trackId];
+  if (!t) return;
+  if (editState.trackId !== trackId) Object.assign(editState, { trackId, coverBlob: null, coverUrl: '' });
+  const writable = canWriteTags(t.meta);
+  const val = (k) => {
+    if (k === 'trackNo') return t.trackNo ? String(t.trackNo) + (first(t.meta, 'TRACKTOTAL') ? '/' + first(t.meta, 'TRACKTOTAL') : '') : '';
+    if (k === 'discNo') return t.discNo > 1 || first(t.meta, 'DISCNUMBER') ? String(t.discNo) : '';
+    return t[k] || '';
+  };
+  const coverPreview = editState.coverBlob ? URL.createObjectURL(editState.coverBlob) : '';
+  const html = `
+    <form class="edit-form" data-form="edit">
+      <div class="edit-cover">
+        <span class="art" id="edit-art" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}" ${coverPreview ? `style="background-image:url('${coverPreview}')"` : ''}></span>
+        <div class="edit-cover-actions">
+          <button class="pill-btn small" type="button" data-edit="pick-cover">Choose image</button>
+          <button class="pill-btn small" type="button" data-edit="find">${ICON.wand}<span>Find online</span></button>
+          <small>${editState.coverBlob ? 'New cover selected' : 'Cover'}</small>
+        </div>
+      </div>
+      ${EDIT_FIELDS.map(([key, label, prop]) => `
+        <label class="edit-field"><span>${label}</span>
+          <input class="set-input" name="${key}" value="${esc(val(prop))}" autocomplete="off" ${key === 'DATE' ? 'inputmode="numeric"' : ''}></label>`).join('')}
+      <label class="set-row edit-write">
+        <span><b>Save into the music file</b><small>${writable ? `Writes the tags into this ${t.ext} so every player sees them. The audio isn't touched${sourceById(t.src)?.kind === 'drive' ? ' and Drive keeps the old version for 30 days' : ''}.` : `${t.ext} files can't be edited yet. This change is saved in N4cuply only.`}</small></span>
+        <input type="checkbox" class="switch" name="write" ${writable && settings.writeTags ? 'checked' : ''} ${writable ? '' : 'disabled'}>
+      </label>
+      <div class="set-buttons">
+        <button class="pill-btn light" type="submit">Save</button>
+        ${t.fixed ? '<button class="pill-btn" type="button" data-edit="undo">Undo app-only changes</button>' : ''}
+      </div>
+    </form>`;
+  openSheet('edit', 'Edit info', html, push);
+  if (coverPreview) $('#edit-art').classList.add('has-img');
+}
+
+function readEditForm() {
+  const form = $('.edit-form');
+  const out = {};
+  for (const [key] of EDIT_FIELDS) out[key] = form.elements[key].value.trim();
+  return { fields: out, write: !!form.elements.write?.checked };
+}
+
+/** Rule values (app-only) from edited tag fields. */
+function ruleFromFields(f, cover) {
+  const [n] = f.TRACKNUMBER.split('/');
+  return {
+    title: f.TITLE, artist: f.ARTIST, album: f.ALBUM, albumArtist: f.ALBUMARTIST, year: f.DATE, genre: f.GENRE,
+    trackNo: parseInt(n, 10) || 0, discNo: parseInt(f.DISCNUMBER, 10) || 0, ...(cover ? { cover } : {}),
+  };
+}
+
+async function coverBytes(source) {
+  if (!source) return null;
+  const blob = source instanceof Blob ? source : await (await fetch(source.replace(/^url:/, ''))).blob();
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), mime: blob.type || 'image/jpeg' };
+}
+
+async function sha(bytes) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Writes tags (and optionally a cover) into the song's file, after checking
+ * the new file reads back correctly and its audio is byte-for-byte the same.
+ * Permissions must already be granted (allowSaving) from the click.
+ */
+async function saveTagsToFile(t, fields, coverSource, progress = (msg) => toast(msg)) {
+  progress(`Reading "${t.title}"…`);
+  const original = new Uint8Array(await (await readBlob({ id: t.id, src: t.src })).arrayBuffer());
+  const readBack = (buf) => readMeta(new RangeReader(async (s, e) => buf.buffer.slice(buf.byteOffset + s, buf.byteOffset + e + 1), buf.length), t.file);
+  const before = await readBack(original);
+  const out = writeTags(original, before, fields, await coverBytes(coverSource));
+  const after = await readBack(out);
+  const sameAudio = (await sha(original.subarray(before.audioOffset))) === (await sha(out.subarray(after.audioOffset)));
+  const titleOk = !fields.TITLE || first(after, 'TITLE') === fields.TITLE;
+  if (!sameAudio || !titleOk || Math.abs((after.duration || 0) - (before.duration || 0)) > 0.05) {
+    throw new Error('Safety check failed, so the file was not changed.');
+  }
+  await overwriteFile(t, out, (p) => progress(`Saving "${t.title}"… ${Math.round(p * 100)}%`));
+  return out.length;
+}
+
+async function saveEdit(e) {
+  e.preventDefault();
+  const t = lib?.tracksById[editState.trackId];
+  if (!t) return;
+  const { fields, write } = readEditForm();
+  const cover = editState.coverBlob || editState.coverUrl || null;
+  const btn = $('.edit-form [type=submit]');
+  btn.disabled = true;
+  if (!write) {
+    if (cover instanceof Blob) toast('A chosen image can only be saved into the file. Other changes were saved.');
+    setTrackFix(t.key, ruleFromFields(fields, typeof cover === 'string' ? cover : ''));
+    closeSheet();
+    toast('Saved in N4cuply.');
+    return;
+  }
+  try {
+    const blocked = await allowSaving([t.src]);
+    if (blocked.size) throw new Error('Saving into the file was not allowed.');
+    await saveTagsToFile(t, fields, cover);
+    clearTrackFix(t.key);
+    closeSheet();
+    toast('Saved into the file.');
+    refreshLibrary({ quiet: true, only: t.src });
+  } catch (err) {
+    toast(err.message || "Couldn't save into the file.");
+    btn.disabled = false;
+  }
+}
+
+function onEditEvent(e) {
+  if (sheetKind !== 'edit') return;
+  if (e.type === 'submit' && e.target.closest('[data-form="edit"]')) { saveEdit(e); return; }
+  if (e.type !== 'click') return;
+  const act = e.target.closest('[data-edit]')?.dataset.edit;
+  if (act === 'pick-cover') $('#cover-input').click();
+  if (act === 'find') openFix(editState.trackId, false);
+  if (act === 'undo') {
+    const t = lib?.tracksById[editState.trackId];
+    if (t) clearTrackFix(t.key);
+    closeSheet();
+    toast('App-only changes undone.');
+  }
+}
+
+/** ✨ match picked: show it now (rule) and write it into the file if allowed. */
+async function applyMatch(t, c) {
+  const fix = fixFrom(c);
+  setTrackFix(t.key, fix);
+  closeSheet();
+  if (!settings.writeTags || !canWriteTags(t.meta)) {
+    toast(`Updated "${c.title}".`);
+    return;
+  }
+  const fields = {
+    TITLE: c.title, ARTIST: c.artist, ALBUM: c.album, ALBUMARTIST: c.albumArtist, DATE: c.year, GENRE: c.genre,
+    TRACKNUMBER: c.trackNo ? (c.trackTotal ? `${c.trackNo}/${c.trackTotal}` : String(c.trackNo)) : '',
+    DISCNUMBER: c.discNo > 1 ? String(c.discNo) : '',
+  };
+  try {
+    const blocked = await allowSaving([t.src]);
+    if (blocked.size) throw new Error('Shown in N4cuply; saving into the file was not allowed.');
+    await saveTagsToFile(t, fields, fix.cover || null);
+    clearTrackFix(t.key);
+    toast(`Updated "${c.title}" and saved it into the file.`);
+    refreshLibrary({ quiet: true, only: t.src });
+  } catch (err) {
+    toast(err.message || 'Shown in N4cuply; saving into the file failed.');
+  }
+}
+
+/** Writes all app-only fixes into their files (Organize). */
+async function writeFixesToFiles(tracks) {
+  const blocked = await allowSaving(tracks.map((t) => t.src));
+  const touched = new Set();
+  let ok = 0;
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    if (blocked.has(t.src)) continue;
+    const fix = getRules().tracks?.[t.key];
+    if (!fix) continue;
+    const fields = {
+      TITLE: t.title, ARTIST: t.artist, ALBUM: t.album, ALBUMARTIST: t.albumArtist, DATE: t.year, GENRE: t.genre,
+      TRACKNUMBER: t.trackNo ? String(t.trackNo) : '', DISCNUMBER: t.discNo > 1 ? String(t.discNo) : '',
+    };
+    try {
+      await saveTagsToFile(t, fields, fix.cover || null, (msg) => orgProgress(msg, i, tracks.length));
+      clearTrackFix(t.key);
+      touched.add(t.src);
+      ok++;
+    } catch (e) { /* leave this one app-only */ }
+  }
+  orgProgress(`Saved ${ok} of ${tracks.length} songs into their files.`, tracks.length, tracks.length);
+  return touched;
+}
+
+// ================= play counts (for "Popular") =================
+const PLAYS_KEY = 'mp.plays.v1';
+let plays = {};
+try { plays = JSON.parse(localStorage.getItem(PLAYS_KEY) || '{}'); } catch (e) { plays = {}; }
+let countedId = '';
+
+function countPlay(t, time) {
+  if (!t || countedId === t.id || time < 30) return;
+  countedId = t.id;
+  plays[t.key] = (plays[t.key] || 0) + 1;
+  try { localStorage.setItem(PLAYS_KEY, JSON.stringify(plays)); } catch (e) { /* ignore */ }
+}
+
+// ================= artist profiles =================
+const artistFetching = new Set();
+const artistsTried = new Set();
+
+function loadArtistInfo(name, online) {
+  if (artistFetching.has(name)) return;
+  artistFetching.add(name);
+  artistInfo(name, { online }).then((info) => {
+    artistFetching.delete(name);
+    if (info) render();
+  });
+}
+
+function artistPhoto(name) {
+  const info = peekArtist(name);
+  return info?.image ? 'url:' + info.image : '';
+}
+
 // ================= fix song info =================
 const fixState = { trackId: '', term: '', results: null, error: '', loading: false };
 
@@ -1497,11 +1767,12 @@ function renderFix(push) {
       <small>${esc(t.file)}${t.duration ? ' · ' + fmt(t.duration) : ''}</small></div>
     </div>
     ${t.fixed ? '<div class="set-row fixed-row"><span><b>You fixed this song</b><small>The original file is unchanged.</small></span><button class="pill-btn small" type="button" data-fix="undo">Undo</button></div>' : ''}
+    <div class="set-buttons"><button class="pill-btn small" type="button" data-action="edit-track" data-id="${esc(t.id)}">${ICON.pencil}<span>Edit manually</span></button></div>
     <form class="set-inline fix-search" data-form="fix-search">
       <input id="fix-term" class="set-input" type="search" value="${esc(fixState.term)}" aria-label="Search for this song" autocomplete="off">
       <button class="pill-btn small" type="submit">Search</button>
     </form>
-    <p class="info-note">Tap the right match to update title, artist, album, year, genre, track number and cover. Saved to your library file in Drive; the audio file isn't changed.</p>
+    <p class="info-note">Tap the right match to update title, artist, album, year, genre, track number and cover.${settings.writeTags && canWriteTags(t.meta) ? ' It is also saved into the music file (the audio is not changed).' : ' Saved in N4cuply (synced through your Drive).'}</p>
     ${list}`;
   openSheet('fix', 'Fix info & cover', html, push);
 }
@@ -1521,9 +1792,7 @@ function onFixEvent(e) {
   if (btn.dataset.fix === 'apply') {
     const c = fixState.results?.[Number(btn.dataset.i)];
     if (!c) return;
-    setTrackFix(t.key, fixFrom(c));
-    toast(`Updated "${c.title}".`);
-    closeSheet();
+    applyMatch(t, c);
   } else if (btn.dataset.fix === 'undo') {
     clearTrackFix(t.key);
     toast('Back to the file’s own info.');
@@ -1597,6 +1866,13 @@ function openOrganize(push = true) {
         <div class="set-row"><span><b>${esc(t.title)}</b><small>${esc(t.file)}</small></span>
         <button class="pill-btn small" type="button" data-action="fix-track" data-id="${esc(t.id)}">Choose</button></div>`).join('')}
     </div>
+
+    ${(() => {
+      const appOnly = lib.tracks.filter((t) => t.fixed && canWriteTags(t.meta));
+      return appOnly.length ? `<div class="info-group set-group"><h4>Save into files</h4>
+        <div class="set-row"><span><b>${plural(appOnly.length, 'song')} fixed in N4cuply only</b><small>Write their new info and covers into the FLAC / MP3 files so every player sees them. Each file is downloaded and uploaded once.</small></span>
+        <button class="pill-btn small" type="button" data-org="write" ${busy ? 'disabled' : ''}>Save</button></div></div>` : '';
+    })()}
 
     <div class="info-group set-group"><h4>Covers</h4>
       <div class="set-row"><span><b>${plural(res.noCover.length, 'album')} without a cover</b><small>${res.noCover.slice(0, 4).map((a) => esc(a.name)).join(', ')}${res.noCover.length > 4 ? '…' : ''}${res.noCover.length ? '' : 'All albums have covers.'}</small></span>
@@ -1700,6 +1976,9 @@ async function runOrganize(kind) {
       for (const g of res.albums) mergeAlbums(g.albums.map((a) => a.key), g.target);
       orgProgress(`Merged ${plural(res.artists.length, 'artist group')} and ${plural(res.albums.length, 'album')}.`, 1, 1);
     }
+    if (kind === 'write') {
+      for (const id of await writeFixesToFiles(lib.tracks.filter((t) => t.fixed && canWriteTags(t.meta)))) touched.add(id);
+    }
     if (kind === 'info' || (kind === 'all' && settings.onlineLookup)) {
       const todo = lib.tracks.filter(needsFix);
       if (todo.length) await autoFixSongs(todo);
@@ -1748,7 +2027,7 @@ function onOrganizeEvent(e) {
   } else if (act === 'fix-all') {
     runOrganize('all');
     return;
-  } else if (act === 'covers' || act === 'lyrics' || act === 'info') {
+  } else if (act === 'covers' || act === 'lyrics' || act === 'info' || act === 'write') {
     runOrganize(act);
     return;
   }
@@ -1795,7 +2074,8 @@ function wireStaticUi() {
     if (!el) return;
     const action = el.dataset.action;
     if (action === 'track-info') { e.stopPropagation(); openTrackInfo(el.dataset.id); return; }
-    if (action === 'fix-track') { e.stopPropagation(); openFix(el.dataset.id, sheetKind !== 'info'); return; }
+    if (action === 'fix-track') { e.stopPropagation(); openFix(el.dataset.id, !sheetKind); return; }
+    if (action === 'edit-track') { e.stopPropagation(); openEdit(el.dataset.id, !sheetKind); return; }
     const list = lists[el.dataset.list] || [];
     if (action === 'play-track') withAuth(() => player.playList(list, Number(el.dataset.i), { shuffle: player.state.shuffle }));
     else if (action === 'play-list') withAuth(() => player.playList(list, 0, { shuffle: false }));
@@ -1806,6 +2086,8 @@ function wireStaticUi() {
     else if (action === 'allow-local') allowLocal(el.dataset.src);
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
+    else if (action === 'artist-bio') { artistsTried.delete(el.dataset.name); loadArtistInfo(el.dataset.name, true); }
+    else if (action === 'bio-more') { $('#about-bio')?.classList.toggle('open'); el.textContent = $('#about-bio')?.classList.contains('open') ? 'Show less' : 'Read more'; }
     else if (action === 'organize') openOrganize();
     else if (action === 'upload') openUpload(el.dataset.folder || undefined);
     else if (action === 'jump') withAuth(() => player.jumpTo(Number(el.dataset.pos)));
@@ -1820,6 +2102,8 @@ function wireStaticUi() {
   body.addEventListener('click', onUploadEvent);
   body.addEventListener('click', onOrganizeEvent);
   body.addEventListener('click', onFixEvent);
+  body.addEventListener('click', onEditEvent);
+  body.addEventListener('submit', onEditEvent);
   body.addEventListener('submit', onFixEvent);
   body.addEventListener('change', onOrganizeEvent);
   body.addEventListener('change', onUploadEvent);
@@ -1850,6 +2134,14 @@ function wireStaticUi() {
     openUpload(r.name === 'album' && lib?.albumsById[r.id] ? lib.albumsById[r.id].folderId : undefined);
   });
   $('#settings-btn').addEventListener('click', () => openSettings());
+  $('#cover-input').addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f || sheetKind !== 'edit') return;
+    editState.coverBlob = f;
+    editState.coverUrl = '';
+    openEdit(editState.trackId, false);
+  });
   wireDragDrop();
 
   $('#mini-open').addEventListener('click', () => setNowOpen(true));
@@ -1966,6 +2258,30 @@ function toast(message, { action, onAction } = {}) {
 function hideToast() {
   $('#toast').hidden = true;
 }
+
+// Keep Google access alive without a "Connect" button: any tap renews the
+// token when it has expired or will soon (browsers only allow the sign-in
+// popup during a tap). Also resumes a song that stopped for sign-in.
+document.addEventListener('pointerdown', (e) => {
+  if ($('#app').hidden || e.target.closest('#connect, .toast button')) return;
+  const account = primaryAccount();
+  if (!account) return;
+  const expired = !hasToken(account);
+  const soon = !expired && expiresSoon(account);
+  if (!expired && !soon) return;
+  if (soon && Date.now() - lastRefreshTry < 3 * 60e3) return;
+  lastRefreshTry = Date.now();
+  signIn({ account }).then(() => {
+    hideToast();
+    if (expired) {
+      player.resumeAfterAuth();
+      if (listSources().some((src) => srcState[src.id]?.status === 'auth')) refreshLibrary({ quiet: true });
+    }
+  }).catch(() => {});
+}, { capture: true, passive: true });
+
+// Read-only handle for debugging in the browser console.
+window.n4cuply = { get lib() { return lib; }, scans, srcState };
 
 player.on('change', updatePlayerUi);
 player.on('state', () => { updatePlayState(); if (player.state.playing) progressLoop(); });

@@ -3,7 +3,7 @@
 // Also the one place that knows how to read a file from either kind.
 import { CONFIG } from '../config.js';
 import { accessToken, primaryAccount } from './auth.js';
-import { fetchBlob, fetchRange, uploadFile } from './drive.js';
+import { fetchBlob, fetchRange, uploadFile, updateFileResumable } from './drive.js';
 import { idbGet, idbPut, idbDelete } from './store.js';
 import { settings } from './settings.js';
 
@@ -131,6 +131,10 @@ export function rememberFileHandle(fileId, handle) {
 export const localId = (srcId, path) => `local:${srcId}:${path}`;
 
 async function localFile(fileId) {
+  return (await localFileHandle(fileId)).getFile();
+}
+
+async function localFileHandle(fileId) {
   let fh = fileHandles.get(fileId);
   if (!fh) {
     const [, srcId, ...rest] = fileId.split(':');
@@ -141,7 +145,7 @@ async function localFile(fileId) {
     fh = await dir.getFileHandle(parts[parts.length - 1]);
     fileHandles.set(fileId, fh);
   }
-  return fh.getFile();
+  return fh;
 }
 
 // ---------------------------------------------------------------- reading files
@@ -225,4 +229,19 @@ export async function saveToFolder(folderId, srcId, name, blob) {
   }
   const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
   await uploadFile(file, folderId, accountOf(src));
+}
+
+/** Overwrites a song file with new bytes (after tag editing). */
+export async function overwriteFile(track, bytes, onProgress) {
+  const src = sourceById(track.src);
+  if (!src) throw new Error('Unknown source.');
+  if (src.kind === 'local') {
+    const fh = await localFileHandle(track.id);
+    const w = await fh.createWritable();
+    await w.write(bytes);
+    await w.close();
+    onProgress?.(1);
+    return;
+  }
+  await updateFileResumable(track.id, new Blob([bytes], { type: track.mime || 'application/octet-stream' }), accountOf(src), onProgress);
 }

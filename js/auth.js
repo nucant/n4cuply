@@ -122,10 +122,10 @@ export function canWrite(account) {
   return hasToken(account) && !!tokenOf(account).write;
 }
 
-/** True when less than 10 minutes are left, so we can refresh on the next click. */
+/** True when less than 20 minutes are left, so the next tap renews it early. */
 export function expiresSoon(account) {
   const t = tokenOf(account);
-  return !t || t.exp - Date.now() < 10 * 60e3;
+  return !t || t.exp - Date.now() < 20 * 60e3;
 }
 
 export function accessToken(account) {

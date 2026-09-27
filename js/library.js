@@ -147,21 +147,22 @@ function audioMime(name, mime) {
 }
 
 // ---------------------------------------------------------------- metadata
-const metaMap = new Map();
+const metaMap = new Map(); // file id -> { key, m }; key changes when the file changes
 const metaKey = (f) => `${f.id}:${f.md5 || f.modified}:${f.size}`;
+const metaOf = (f) => { const e = metaMap.get(f.id); return e && e.key === metaKey(f) ? e.m : null; };
 
 export async function loadMetaCache(files) {
   const all = await idbGetAll('meta');
   for (const f of files) {
     const m = all.get(metaKey(f));
-    if (m && m.v === META_VERSION) metaMap.set(f.id, m);
+    if (m && m.v === META_VERSION) metaMap.set(f.id, { key: metaKey(f), m });
   }
 }
 
-export const metaFor = (id) => metaMap.get(id) || null;
+export const metaFor = (id) => metaMap.get(id)?.m || null;
 
 export function missingMeta(files) {
-  return files.filter((f) => !metaMap.has(f.id));
+  return files.filter((f) => !metaOf(f));
 }
 
 const isPermissionError = (e) => e instanceof AuthError || e?.name === 'NotAllowedError' || e?.name === 'SecurityError';
@@ -189,7 +190,7 @@ export async function readMissingMeta(files, onProgress, { concurrency = 4 } = {
         if (isPermissionError(e)) { blocked.add(f.src); continue; }
         m = { v: META_VERSION, error: String(e.message || e), tags: {}, raw: [], pictures: [], extra: [], credits: [] };
       }
-      metaMap.set(f.id, m);
+      metaMap.set(f.id, { key: metaKey(f), m });
       idbPut('meta', metaKey(f), m);
       done++;
       onProgress?.(done, total);
@@ -288,7 +289,7 @@ export function build(scans) {
     seen.add(key);
     refs.set(f.id, f.src);
     const folder = folders[f.folderId] || { name: f.rootName, path: f.rootName };
-    const m = metaMap.get(f.id);
+    const m = metaOf(f);
     const fix = rules.tracks?.[key] || {};
     const artist = aliasArtist(fix.artist || first(m, 'ARTIST'));
     const t = {

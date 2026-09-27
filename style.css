@@ -636,3 +636,90 @@ select.set-input { appearance: auto; }
 .fix-meta small { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 .fixed-row { margin-top: 8px; border-radius: 12px; background: rgba(52, 199, 89, .1); border: 1px solid rgba(52, 199, 89, .25); }
 .info-hero small + small { font-size: 12px; color: var(--text-3); }
+
+/* ---------- v1.6: edit info ---------- */
+.edit-form { display: grid; gap: 10px; }
+.edit-cover { display: flex; gap: 14px; align-items: center; }
+.edit-cover .art { width: 96px; height: 96px; flex: none; border-radius: 10px; background-size: cover; }
+.edit-cover .art span { font-size: 28px; }
+.edit-cover-actions { display: grid; gap: 8px; justify-items: start; }
+.edit-cover-actions small { color: var(--text-3); font-size: 12px; }
+.edit-field { display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
+.edit-field .set-input { margin-top: 0; }
+.edit-write { border-radius: 12px; background: rgba(255, 255, 255, .06); border-top: 0; margin-top: 4px; }
+@media (min-width: 600px) {
+  .edit-form { grid-template-columns: 1fr 1fr; column-gap: 12px; }
+  .edit-cover, .edit-write, .edit-form .set-buttons { grid-column: 1 / -1; }
+}
+
+/* ---------- v1.6: artist profile ---------- */
+.artist-page .artist-top {
+  position: relative; margin: 0 -16px; height: clamp(300px, 48vh, 440px); overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.artist-photo { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; background-position: center 20%; }
+.artist-photo span { font-size: 120px; opacity: .35; }
+.artist-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .25) 0%, transparent 35%, rgba(11, 11, 15, .2) 55%, var(--bg) 100%); }
+.artist-top .page-top { position: relative; padding: 12px 16px 0; }
+.artist-top .page-top .round-btn { background: rgba(0, 0, 0, .35); }
+.artist-name { position: relative; padding: 0 16px 18px; display: grid; gap: 4px; }
+.artist-name .eyebrow { color: rgba(255, 255, 255, .8); }
+.artist-name h1 { margin: 0; font-size: clamp(40px, 9vw, 84px); font-weight: 900; letter-spacing: -.045em; line-height: .95; text-shadow: 0 4px 30px rgba(0, 0, 0, .45); text-wrap: balance; }
+.artist-name .hero-meta { color: rgba(255, 255, 255, .8); text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 500; }
+.artist-actions { display: flex; align-items: center; gap: 16px; padding-top: 14px; }
+.play-fab {
+  width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--tint-soft); color: #111; box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+  transition: transform .15s var(--ease);
+}
+.play-fab:active { transform: scale(.92); }
+.play-fab svg { width: 28px; height: 28px; }
+.about {
+  display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: start;
+  padding: 18px; border-radius: 16px; background: color-mix(in srgb, var(--tint) 45%, var(--bg-2));
+}
+.about.muted { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--text-2); background: var(--bg-2); }
+.about-img { width: 120px; height: 120px; border-radius: 12px; object-fit: cover; }
+.about-text { display: grid; gap: 8px; min-width: 0; }
+.about-desc { margin: 0; font-weight: 700; font-size: 16px; }
+.about-bio { margin: 0; color: rgba(255, 255, 255, .78); line-height: 1.55; max-width: 70ch; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.about-bio.open { -webkit-line-clamp: unset; display: block; }
+.about-links { display: flex; gap: 18px; }
+@media (max-width: 520px) { .about { grid-template-columns: 1fr; } .about-img { width: 100%; height: 200px; } }
+@media (min-width: 900px) { .artist-page .artist-top { margin: 0 -24px; } .artist-name { padding: 0 24px 24px; } }
+
+/* ---------- v1.6.1: tidier artist header ---------- */
+.artist-page .artist-top { height: clamp(220px, 32vh, 320px); }
+.artist-photo span { display: none; }
+.artist-photo:not(.has-img) { background-image: linear-gradient(145deg, hsl(var(--h1) 45% 30%), hsl(var(--h2) 40% 12%)); }
+.artist-name h1 { font-size: clamp(34px, 6.5vw, 64px); }
+@media (min-width: 900px) {
+  .artist-page .artist-top { height: 340px; border-radius: 0 0 18px 18px; }
+  .artist-photo { background-position: center 25%; }
+}
+.about-img { width: 104px; height: 104px; }
+
+/* ---------- v1.6.2: layout polish ---------- */
+.artist-blur { display: none; }
+@media (min-width: 900px) {
+  .artist-page .artist-top { height: 320px; }
+  .artist-blur {
+    display: block; position: absolute; inset: -60px; width: auto; height: auto; aspect-ratio: auto; border-radius: 0;
+    filter: blur(50px) saturate(130%) brightness(.55); transform: scale(1.1);
+  }
+  .artist-blur span { display: none; }
+  .artist-photo {
+    position: absolute; inset: auto auto 28px 24px; width: 220px; height: 220px; aspect-ratio: 1;
+    border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); background-position: center 20%;
+  }
+  .artist-shade { background: linear-gradient(180deg, transparent 50%, rgba(11, 11, 15, .5) 100%); }
+  .artist-name { padding: 0 24px 34px 272px; }
+}
+@media (max-width: 520px) {
+  .home-head { gap: 12px; padding-top: 20px; }
+  .home-actions { gap: 8px; }
+  .home-actions .pill-btn { height: 42px; padding: 0 16px; font-size: 14.5px; }
+  .home-actions .narrow-icon { width: 42px; padding: 0; }
+  .home-actions .narrow-icon span { display: none; }
+  .seg a { height: 32px; padding: 0 14px; }
+}

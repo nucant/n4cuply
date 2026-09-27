@@ -48,7 +48,7 @@ export async function findCover(album) {
     + (!wantArtist || looseArtist(r.artistName).includes(wantArtist) ? 1 : 0);
   const best = results.map((r) => ({ r, s: score(r) })).filter((x) => x.s >= 2).sort((a, b) => b.s - a.s)[0]?.r;
   if (!best?.artworkUrl100) return null;
-  const url = best.artworkUrl100.replace(/\/\d+x\d+bb\./, '/1200x1200bb.');
+  const url = best.artworkUrl100.replace(/\/\d+x\d+bb\./, '/3000x3000bb.');
   const res = await fetch(url);
   if (!res.ok) return null;
   return res.blob();
@@ -68,7 +68,7 @@ export function searchTermFor(track) {
     .trim();
 }
 
-const hi = (url, size = 1200) => String(url || '').replace(/\/\d+x\d+bb\./, `/${size}x${size}bb.`);
+const hi = (url, size = 3000) => String(url || '').replace(/\/\d+x\d+bb\./, `/${size}x${size}bb.`);
 
 /** iTunes song matches: [{ title, artist, albumArtist, album, year, genre, trackNo, trackTotal, discNo, duration, cover, thumb, id }] */
 export async function searchSongs(term) {

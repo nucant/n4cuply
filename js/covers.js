@@ -7,7 +7,7 @@ import { idbGet, idbPut } from './store.js';
 
 const mem = new Map(); // coverId -> Promise<{url, color}|null>
 const ready = new Map(); // coverId -> {url, color} once loaded
-const MAX_EDGE = 720;
+const MAX_EDGE = 1600; // cached display size; big enough for sharp full-screen art
 
 /**
  * coverId: "pic:<trackId>" (picture embedded in the file) or "file:<imageFileId>".
