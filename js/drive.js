@@ -51,7 +51,7 @@ export async function listChildren(folderId) {
   do {
     const params = {
       q: `'${folderId}' in parents and trashed = false`,
-      fields: 'nextPageToken,files(id,name,mimeType,size)',
+      fields: 'nextPageToken,files(id,name,mimeType,size,md5Checksum,modifiedTime)',
       pageSize: '1000',
       orderBy: 'name',
       supportsAllDrives: 'true',
@@ -72,4 +72,13 @@ export function mediaUrl(id) {
 export async function fetchBlob(id, signal) {
   const res = await request(mediaUrl(id), { signal });
   return res.blob();
+}
+
+/** File-er ekta ongsho (start..end, duto-i inclusive). */
+export async function fetchRange(id, start, end) {
+  const res = await request(mediaUrl(id), { headers: { Range: `bytes=${start}-${end}` } });
+  const buf = await res.arrayBuffer();
+  // Server range na mene puro file dile, dorkari ongsho kete nei.
+  if (res.status === 200 && buf.byteLength > end - start + 1) return buf.slice(start, end + 1);
+  return buf;
 }

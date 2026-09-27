@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0d0e12">
+  <meta name="theme-color" content="#0b0b0f">
   <meta name="robots" content="noindex, nofollow">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="style.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script type="module" src="app.js"></script>
@@ -21,30 +21,32 @@
 <body>
   <!-- Login -->
   <section id="login" class="login" hidden>
+    <div class="login-glow" aria-hidden="true"></div>
     <div class="login-card">
-      <img src="icons/icon.svg" alt="" class="login-logo" width="72" height="72">
-      <h1>My Player</h1>
-      <p>Tomar nijer gaan, tomar Google Drive theke.</p>
-      <button id="connect" class="btn primary big" type="button">Google diye connect koro</button>
-      <p class="login-note">App shudhu gaan porte pare. Drive-e kichu bodlay na, delete-o kore na.</p>
+      <img src="icons/icon.svg" alt="" class="login-logo" width="84" height="84">
+      <h1>Tomar sob gaan,<br>tomar Drive theke.</h1>
+      <p>Lossless, Hi-Res, sob info soho.</p>
+      <button id="connect" class="pill-btn light big" type="button">Google diye connect koro</button>
+      <p class="login-note">Shudhu read-only. Drive-e kichu bodlay na, delete-o kore na.</p>
       <p id="login-error" class="login-error" role="alert" hidden></p>
     </div>
   </section>
 
   <!-- App -->
   <div id="app" class="app" hidden>
-    <header class="topbar">
-      <a href="#" class="brand" aria-label="Home"><img src="icons/icon.svg" alt="" width="28" height="28"><span>My Player</span></a>
+    <header class="topbar glass">
+      <a href="#" class="brand" aria-label="Home"><img src="icons/icon.svg" alt="" width="30" height="30"></a>
       <label class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="q" type="search" placeholder="Gaan ba album khojo" autocomplete="off" aria-label="Search">
+        <input id="q" type="search" placeholder="Gaan, album, artist" autocomplete="off" aria-label="Search">
       </label>
       <div class="menu-wrap">
-        <button id="menu-btn" class="icon-btn" type="button" aria-label="Menu" aria-expanded="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+        <button id="menu-btn" class="round-btn" type="button" aria-label="Menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fill" cx="5" cy="12" r="1.8"/><circle class="fill" cx="12" cy="12" r="1.8"/><circle class="fill" cx="19" cy="12" r="1.8"/></svg>
         </button>
-        <div id="menu" class="menu" hidden>
+        <div id="menu" class="menu glass" hidden>
           <button type="button" data-menu="refresh">Library refresh koro</button>
+          <button type="button" data-menu="rescan">Sob info abar poro</button>
           <button type="button" data-menu="install" hidden>Phone-e install koro</button>
           <button type="button" data-menu="logout" class="danger">Logout</button>
         </div>
@@ -54,12 +56,12 @@
     <main id="main" class="main" tabindex="-1"></main>
 
     <!-- Mini player -->
-    <div id="mini" class="mini" hidden>
+    <div id="mini" class="mini glass" hidden>
       <button id="mini-open" class="mini-info" type="button" aria-label="Now playing kholo">
         <span class="art mini-art" id="mini-art"></span>
-        <span class="mini-text"><b id="mini-title"></b><small id="mini-album"></small></span>
+        <span class="mini-text"><b id="mini-title"></b><small id="mini-artist"></small></span>
       </button>
-      <button id="mini-play" class="icon-btn play-btn" type="button" aria-label="Play"></button>
+      <button id="mini-play" class="icon-btn" type="button" aria-label="Play"></button>
       <button id="mini-next" class="icon-btn" type="button" aria-label="Next"></button>
       <div class="mini-bar"><span id="mini-progress"></span></div>
     </div>
@@ -67,33 +69,63 @@
 
   <!-- Now playing -->
   <section id="now" class="now" hidden aria-label="Now playing">
-    <div class="now-inner">
-      <div class="now-top">
-        <button id="now-close" class="icon-btn" type="button" aria-label="Bondho koro"></button>
-        <span class="now-from" id="now-from"></span>
-        <span class="icon-btn-spacer"></span>
+    <div class="np-bg" aria-hidden="true"><div class="np-bg-img" id="np-bg-img"></div></div>
+    <div class="np-layout">
+      <div class="np-art-wrap">
+        <div class="art np-art" id="np-art"></div>
       </div>
-      <div class="art now-art" id="now-art"></div>
-      <div class="now-meta">
-        <h2 id="now-title"></h2>
-        <p id="now-album"></p>
+      <div class="np-top">
+        <button id="np-close" class="round-btn glass-soft" type="button" aria-label="Bondho koro"></button>
+        <span class="np-handle" aria-hidden="true"></span>
+        <button id="np-more" class="round-btn glass-soft" type="button" aria-label="Gaan-er info"></button>
       </div>
-      <div class="seek">
-        <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
-        <div class="times"><span id="t-cur">0:00</span><span id="t-dur">0:00</span></div>
-      </div>
-      <div class="controls">
-        <button id="c-shuffle" class="icon-btn toggle" type="button" aria-label="Shuffle"></button>
-        <button id="c-prev" class="icon-btn" type="button" aria-label="Previous"></button>
-        <button id="c-play" class="icon-btn play-btn big" type="button" aria-label="Play"></button>
-        <button id="c-next" class="icon-btn" type="button" aria-label="Next"></button>
-        <button id="c-repeat" class="icon-btn toggle" type="button" aria-label="Repeat"></button>
-      </div>
-      <div class="upnext">
-        <h3>Porer gaan</h3>
-        <div id="upnext-list"></div>
+      <div class="np-body">
+        <p class="np-tech" id="np-tech"></p>
+        <div class="np-titlerow">
+          <div class="np-titles">
+            <h2 id="np-title"></h2>
+            <button id="np-artist" class="np-artist" type="button"></button>
+          </div>
+          <button id="np-info" class="round-btn glass-soft" type="button" aria-label="Info"></button>
+        </div>
+        <button id="np-lyric" class="np-lyric" type="button" hidden></button>
+        <div class="np-progress">
+          <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+          <div class="np-times">
+            <span id="t-cur">0:00</span>
+            <span id="np-badge" class="np-badge"></span>
+            <span id="t-left">-0:00</span>
+          </div>
+        </div>
+        <div class="np-controls">
+          <button id="c-prev" class="ctrl" type="button" aria-label="Previous"></button>
+          <button id="c-play" class="ctrl play" type="button" aria-label="Play"></button>
+          <button id="c-next" class="ctrl" type="button" aria-label="Next"></button>
+        </div>
+        <div class="np-volume">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M4 9h4l5-4v14l-5-4H4z"/></svg>
+          <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12"/></svg>
+        </div>
+        <div class="np-bottom">
+          <button id="c-lyrics" class="icon-btn" type="button" aria-label="Lyrics"></button>
+          <button id="c-shuffle" class="icon-btn toggle" type="button" aria-label="Shuffle"></button>
+          <button id="c-repeat" class="icon-btn toggle" type="button" aria-label="Repeat"></button>
+          <button id="c-queue" class="icon-btn" type="button" aria-label="Queue"></button>
+        </div>
       </div>
     </div>
+  </section>
+
+  <!-- Bottom sheet: info / lyrics / queue / album info -->
+  <div id="sheet-scrim" class="sheet-scrim" hidden></div>
+  <section id="sheet" class="sheet glass" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-head">
+      <span class="np-handle" aria-hidden="true"></span>
+      <h3 id="sheet-title"></h3>
+      <button id="sheet-close" class="round-btn glass-soft" type="button" aria-label="Bondho koro"></button>
+    </div>
+    <div id="sheet-body" class="sheet-body"></div>
   </section>
 
   <div id="toast" class="toast" role="status" hidden></div>

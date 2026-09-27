@@ -2,3 +2,7 @@
 apps-script/
 .DS_Store
 Thumbs.db
+
+# Local kaajer file (APK, reference) - GitHub-e jabe na
+Working/
+*.apk

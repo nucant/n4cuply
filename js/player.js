@@ -285,7 +285,7 @@ function updateMediaSession() {
   if (!track) return;
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title,
-    artist: track.albumName,
+    artist: track.artist || track.albumName,
     album: track.albumName,
     artwork: artwork ? [{ src: artwork, sizes: '512x512' }]
       : [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }],
@@ -330,6 +330,12 @@ function save(force = false) {
   } catch (e) { /* storage bondho */ }
 }
 
+/** Library notun kore banale queue-r track gulo notun object diye bodlay. */
+function relink(byId) {
+  state.queue = state.queue.map((t) => byId[t.id] || t);
+  emit('change');
+}
+
 /** Ager bar je gaan chilo seta mini player-e dekhay (auto-play hoy na). */
 function restore(lib) {
   let s = null;
@@ -364,4 +370,5 @@ export const player = {
   resumeAfterAuth,
   setArtwork,
   restore,
+  relink,
 };

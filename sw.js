@@ -2,7 +2,7 @@
 // 1) App-er file gulo cache kore, jate taratari khole.
 // 2) "stream/<fileId>" request Drive-e pathay token soho, jate gaan
 //    puro download na kore-i shuru hoy ar seek kaaj kore.
-const CACHE = 'my-player-v2';
+const CACHE = 'my-player-v3';
 const SHELL = [
   './',
   'index.html',
@@ -13,6 +13,9 @@ const SHELL = [
   'js/drive.js',
   'js/library.js',
   'js/player.js',
+  'js/meta.js',
+  'js/store.js',
+  'js/covers.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
