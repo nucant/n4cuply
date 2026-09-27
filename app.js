@@ -11,7 +11,7 @@ import {
 } from './js/sources.js';
 import {
   analyze, mergeArtists, mergeAlbums, ignore, resetRules, getRules, adoptRules, onRulesChange, RULES_FILE,
-  setTrackFix, setTrackFixes, clearTrackFix, trackKeyOf, rekeyTrack,
+  setTrackFix, setTrackFixes, clearTrackFix, trackKeyOf, rekeyTrack, getProfile, setProfile,
   isLiked, toggleLike, likeMany, playlists, createPlaylist, addToPlaylist, removeFromPlaylist, removeManyFromPlaylist,
   renamePlaylist, deletePlaylist,
 } from './js/organize.js';
@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.2'; // keep in sync with version.json
+const APP_VERSION = '2.3'; // keep in sync with version.json
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -62,6 +62,7 @@ const ICON = {
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg>',
   gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v8.5a1.5 1.5 0 01-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 014 19.5z"/></svg>',
+  search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -112,19 +113,23 @@ function greeting() {
   return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
-const isDashboard = () => document.body.classList.contains('layout-tablet') && route().name === 'home' && !$('#q').value.trim();
+const isDashboard = () => route().name === 'home';
 
 function renderDashboard() {
   const t = player.current();
   const s = player.state;
   const now = new Date();
-  const name = accountName(primaryAccount()).split(' ')[0];
+  const name = profile().name.split(' ')[0];
   const total = lib.tracks.reduce((a, x) => a + (x.duration || 0), 0);
   const lossless = lib.tracks.filter((x) => x.meta?.lossless).length;
   const hires = lib.tracks.filter((x) => x.meta?.hiRes).length;
-  const week = weekMinutes();
-  const maxMin = Math.max(30, ...week.map((d) => d.mins));
-  const weekTotal = week.reduce((a, d) => a + d.mins, 0);
+  // Top songs by plays; until there are enough plays, the newest songs.
+  const played = lib.tracks.filter((x) => plays[x.key]).sort((a, b) => plays[b.key] - plays[a.key]);
+  const topMode = played.length >= 3 ? 'plays' : 'new';
+  const topSongs = (topMode === 'plays' ? played : lib.tracks.slice().sort((a, b) => (Date.parse(b.modified) || 0) - (Date.parse(a.modified) || 0))).slice(0, 15);
+  lists.dashTop = topSongs;
+  lists.all = lib.tracks;
+  const mosaic = lib.albums.filter((a) => a.cover).slice(0, 4);
   const byKey = new Map(lib.tracks.map((x) => [x.key, x]));
   const recentTracks = recent.map((k) => byKey.get(k)).filter(Boolean).slice(0, 4);
   lists.dashRecent = recentTracks;
@@ -166,13 +171,21 @@ function renderDashboard() {
           <button class="icon-btn ${s.shuffle ? 'dash-on' : ''}" type="button" data-action="dash-shuffle" aria-label="Shuffle">${ICON.shuffle}</button>
           <button class="icon-btn" type="button" data-action="dash-open" aria-label="Open Now Playing">${ICON.chevron}</button>
         </div>`
-    : `<div class="dash-empty"><b>Nothing playing</b><span>Start with everything, shuffled.</span>
-        <button class="pill-btn light" type="button" data-action="shuffle-list" data-list="all">${ICON.shuffle}<span>Shuffle all</span></button></div>`}
+    : `<div class="dash-empty">
+        <div class="dash-mosaic">${(mosaic.length ? mosaic : [null, null, null, null]).slice(0, 4).map((a, i) => `<span class="art" data-cover="${esc(a?.cover || '')}" data-seed="${esc(a?.name || 'N4cuply ' + i)}"></span>`).join('')}</div>
+        <div class="dash-empty-text"><b>Nothing playing</b><span>${plural(lib.tracks.length, 'song')} ready. Start with everything, shuffled.</span>
+        <button class="pill-btn light" type="button" data-action="shuffle-list" data-list="all">${ICON.shuffle}<span>Shuffle all</span></button></div>
+      </div>`}
     </section>
 
-    <section class="dash-card dash-week">
-      <div class="dash-head"><b>Listening this week</b><span>${weekTotal ? `${weekTotal} min` : 'Play something to fill this in'}</span></div>
-      <div class="dash-bars">${week.map((d) => `<div class="dash-bar-col ${d.today ? 'today' : ''}"><i style="height:${Math.max(4, (d.mins / maxMin) * 100)}%"></i><span>${d.label}</span></div>`).join('')}</div>
+    <section class="dash-card dash-top">
+      <div class="dash-head"><b>${topMode === 'plays' ? 'Top songs' : 'New in your library'}</b><span>${topMode === 'plays' ? 'Your most played' : 'Play songs to build your top list'}</span></div>
+      <div class="dash-gallery">${topSongs.map((x, i) => `
+        <button class="dash-g" type="button" data-action="play-track" data-list="dashTop" data-i="${i}">
+          <span class="art" data-cover="${esc(x.cover)}" data-seed="${esc(x.album)}"></span>
+          <span class="dash-g-rank">${i + 1}</span>
+          <b>${esc(x.title)}</b><small>${esc(x.artist || x.album)}${topMode === 'plays' && plays[x.key] ? ` · ${plural(plays[x.key], 'play')}` : ''}</small>
+        </button>`).join('')}</div>
     </section>
 
     <section class="dash-card dash-visual" data-action="dash-open">
@@ -252,28 +265,26 @@ function effectiveLayout() {
 }
 
 function applyLayout() {
-  let mode = effectiveLayout();
+  const mode = effectiveLayout();
   const w = window.innerWidth;
   const landscape = w > window.innerHeight;
   const b = document.body.classList;
-  // Tablets: dashboard when held sideways, a bigger phone layout when upright.
-  const bigPhone = mode === 'tablet' && !landscape;
-  if (bigPhone) mode = 'phone';
-  b.toggle('big-phone', bigPhone);
-  b.remove('layout-phone', 'layout-tablet', 'layout-desktop');
+  b.remove('layout-phone', 'layout-tablet', 'layout-desktop', 'big-phone', 'has-sidebar');
   b.add('layout-' + mode);
-  const wide = mode !== 'phone';
-  b.toggle('wide', wide);
-  b.toggle('narrow', !wide);
+  // Tablets and computers: icon rail on the left. Phones: tab bar at the bottom.
+  const rail = mode !== 'phone';
+  b.toggle('has-rail', rail);
+  b.toggle('has-tabbar', !rail);
+  b.toggle('wide', rail);
+  b.toggle('narrow', !rail);
   // Now Playing side by side on computers and landscape tablets.
   const npWide = mode === 'desktop' || (mode === 'tablet' && landscape && w >= 900);
   b.toggle('np-wide', npWide);
   b.toggle('np-narrow', !npWide);
-  // Phone layout on a big screen: keep it phone-sized in the middle.
-  b.toggle('phone-frame', mode === 'phone' && w > 700 && !bigPhone);
-  b.toggle('has-sidebar', wide && w >= 700);
-  lastSidebar = '';
-  renderSidebar();
+  // Phone layout chosen on a big screen: keep it phone-sized in the middle.
+  b.toggle('phone-frame', mode === 'phone' && w > 700);
+  lastNav = '';
+  renderNav();
   if (lib && !$('#app').hidden) render();
 }
 
@@ -284,63 +295,158 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
-let lastSidebar = '';
-function renderSidebar() {
-  const el = $('#sidebar');
-  if (!el) return;
-  if (!document.body.classList.contains('has-sidebar') || $('#app').hidden) {
-    if (lastSidebar) { el.innerHTML = ''; lastSidebar = ''; }
+// ================= profile =================
+function profile() {
+  const p = getProfile();
+  return { name: p.name || accountName(primaryAccount()) || 'You', photo: p.photo || '' };
+}
+
+function avatarHtml(cls = '') {
+  const p = profile();
+  const initials = p.name.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase();
+  return p.photo
+    ? `<span class="avatar ${cls}" style="background-image:url('${p.photo}')"></span>`
+    : `<span class="avatar ${cls}"><span>${esc(initials || '♪')}</span></span>`;
+}
+
+function openProfile(push = true) {
+  const p = profile();
+  const item = (action, icon, label) => `<button class="menu-item" type="button" data-action="${action}">${icon}<span>${label}</span></button>`;
+  const html = `
+    <div class="profile-head">
+      <button class="profile-photo" type="button" data-profile="photo" aria-label="Change photo">${avatarHtml('xl')}<span class="profile-edit">${ICON.pencil}</span></button>
+      <form class="set-inline profile-name" data-form="profile-name">
+        <input id="profile-name" class="set-input" type="text" value="${esc(p.name)}" maxlength="40" aria-label="Your name" autocomplete="off">
+        <button class="pill-btn small light" type="submit">Save</button>
+      </form>
+      ${p.photo ? '<button class="text-btn" type="button" data-profile="remove-photo">Remove photo</button>' : ''}
+      <p class="info-note">${esc(primaryAccount() || 'Not connected')}</p>
+    </div>
+    <div class="menu-list">
+      ${item('settings', ICON.gear, 'Settings')}
+      ${item('dash-liked', ICON.heartFill, 'Liked songs')}
+      ${item('upload', ICON.upload, 'Upload songs')}
+      ${item('organize', ICON.wand, 'Organize library')}
+    </div>`;
+  openSheet('profile', 'Profile', html, push);
+}
+
+/** Square-crops and shrinks a picked photo to a small JPEG data URL. */
+async function avatarFromFile(file) {
+  const bmp = await createImageBitmap(file);
+  const size = 256;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const side = Math.min(bmp.width, bmp.height);
+  c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+
+function onProfileEvent(e) {
+  if (sheetKind !== 'profile') return;
+  if (e.type === 'submit' && e.target.closest('[data-form="profile-name"]')) {
+    e.preventDefault();
+    setProfile({ name: $('#profile-name').value.trim() });
+    toast('Name saved.');
+    openProfile(false);
     return;
   }
+  if (e.type !== 'click') return;
+  const act = e.target.closest('[data-profile]')?.dataset.profile;
+  if (act === 'photo') $('#avatar-input').click();
+  if (act === 'remove-photo') { setProfile({ photo: '' }); openProfile(false); }
+  const action = e.target.closest('[data-action]')?.dataset.action;
+  if (action === 'settings') { e.stopPropagation(); openSettings(false); }
+}
+
+// ================= navigation: rail (tablet, computer) / tab bar (phone) =================
+let lastNav = '';
+function navTab() {
   const r = route();
-  const q = $('#q').value.trim();
-  const tab = q ? '' : r.name === 'album' ? 'albums' : r.name === 'artist' ? 'artists' : r.name === 'playlist' ? 'playlists' : r.name;
-  document.body.classList.toggle('on-dash', r.name === 'home' && !q && document.body.classList.contains('layout-tablet'));
-  const link = (href, name, icon, label) => `<a class="side-link ${tab === name ? 'on' : ''}" href="${href}">${icon}<span>${label}</span></a>`;
-  if (document.body.classList.contains('layout-tablet')) {
-    const rail = (href, name, icon, label) => `<a class="rail-btn ${tab === name ? 'on' : ''}" href="${href}" aria-label="${label}" title="${label}">${icon}</a>`;
-    const railBtn = (action, icon, label) => `<button class="rail-btn" type="button" data-action="${action}" aria-label="${label}" title="${label}">${icon}</button>`;
-    const railHtml = `
-      <a class="rail-logo" href="#home" aria-label="Home"><img src="icons/icon.svg" alt="" width="34" height="34"></a>
+  if (r.name === 'album' || r.name === 'songs' || r.name === 'artists' || r.name === 'artist' || r.name === 'albums') return r.name.startsWith('album') ? 'albums' : r.name.startsWith('artist') ? 'artists' : r.name;
+  if (r.name === 'playlist') return 'playlists';
+  return r.name;
+}
+
+function renderNav() {
+  const b = document.body.classList;
+  if ($('#app').hidden) return;
+  const tab = navTab();
+  b.toggle('on-dash', tab === 'home');
+  let rail = '';
+  let bar = '';
+  if (b.contains('has-rail')) {
+    const r = (href, name, icon, label) => `<a class="rail-btn ${tab === name ? 'on' : ''}" href="${href}" aria-label="${label}" title="${label}">${icon}</a>`;
+    const btn = (action, icon, label) => `<button class="rail-btn" type="button" data-action="${action}" aria-label="${label}" title="${label}">${icon}</button>`;
+    rail = `
+      <button class="rail-me" type="button" data-action="profile" aria-label="Profile" title="${esc(profile().name)}">${avatarHtml()}</button>
       <nav class="rail-group" aria-label="Library">
-        ${rail('#home', 'home', ICON.home, 'Home')}
-        ${rail('#albums', 'albums', ICON.album, 'Albums')}
-        ${rail('#songs', 'songs', ICON.queue, 'Songs')}
-        ${rail('#artists', 'artists', ICON.mic, 'Artists')}
-        ${rail('#playlists', 'playlists', ICON.heart, 'Playlists')}
+        ${r('#home', 'home', ICON.home, 'Home')}
+        ${r('#search', 'search', ICON.search, 'Search')}
+        ${r('#albums', 'albums', ICON.album, 'Albums')}
+        ${r('#songs', 'songs', ICON.queue, 'Songs')}
+        ${r('#artists', 'artists', ICON.mic, 'Artists')}
+        ${r('#playlists', 'playlists', ICON.heart, 'Playlists')}
       </nav>
       <div class="rail-group rail-bottom">
-        ${railBtn('upload', ICON.upload, 'Upload')}
-        ${railBtn('organize', ICON.wand, 'Organize')}
-        ${railBtn('settings', ICON.gear, 'Settings')}
+        ${btn('upload', ICON.upload, 'Upload')}
+        ${btn('organize', ICON.wand, 'Organize')}
+        ${btn('settings', ICON.gear, 'Settings')}
       </div>`;
-    if (railHtml !== lastSidebar) { el.innerHTML = railHtml; lastSidebar = railHtml; }
-    return;
+  } else {
+    const t = (href, name, icon, label) => `<a class="tab-btn ${name.split(' ').includes(tab) ? 'on' : ''}" href="${href}">${icon}<span>${label}</span></a>`;
+    bar = `
+      ${t('#home', 'home', ICON.home, 'Home')}
+      ${t('#search', 'search', ICON.search, 'Search')}
+      ${t('#albums', 'albums songs artists', ICON.album, 'Library')}
+      ${t('#playlists', 'playlists', ICON.heart, 'Playlists')}
+      <button class="tab-btn" type="button" data-action="profile">${avatarHtml('sm')}<span>Profile</span></button>`;
   }
-  const current = r.name === 'playlist' ? r.id : '';
-  const pls = lib ? playlists() : [];
-  const html = `
-    <a class="side-brand" href="#" data-action="home"><img src="icons/icon.svg" alt="" width="30" height="30"><span>N4cuply</span></a>
-    <nav class="side-group" aria-label="Library">
-      ${link('#albums', 'albums', ICON.album, 'Albums')}
-      ${link('#songs', 'songs', ICON.queue, 'Songs')}
-      ${link('#artists', 'artists', ICON.mic, 'Artists')}
-      ${link('#playlists', 'playlists', ICON.heart, 'Playlists')}
-    </nav>
-    <div class="side-title"><span>Playlists</span><button class="round-btn sm" type="button" data-action="new-playlist" aria-label="New playlist">${ICON.plus}</button></div>
-    <div class="side-list">
-      <a class="side-pl ${current === 'liked' ? 'on' : ''}" href="#playlist/liked"><span class="art sm liked-art">${ICON.heartFill}</span><span>Liked songs</span></a>
-      ${pls.map((p) => `<a class="side-pl ${current === p.id ? 'on' : ''}" href="#playlist/${encodeURIComponent(p.id)}"><span class="side-pl-icon">${ICON.queue}</span><span>${esc(p.name)}</span></a>`).join('')}
-    </div>
-    <div class="side-bottom">
-      <button class="side-link" type="button" data-action="upload">${ICON.upload}<span>Upload</span></button>
-      <button class="side-link" type="button" data-action="organize">${ICON.wand}<span>Organize</span></button>
-      <button class="side-link" type="button" data-action="settings">${ICON.gear}<span>Settings</span></button>
+  const key = rail + '|' + bar;
+  if (key === lastNav) return;
+  lastNav = key;
+  $('#sidebar').innerHTML = rail;
+  $('#tabbar').innerHTML = bar;
+}
+
+// ================= search page =================
+let searchText = '';
+
+function genres() {
+  const counts = new Map();
+  for (const t of lib.tracks) if (t.genre) counts.set(t.genre, (counts.get(t.genre) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([g]) => g);
+}
+
+function searchResultsHtml() {
+  const q = searchText.trim().toLowerCase();
+  if (q) return renderSearch(q);
+  const g = genres();
+  return `
+    ${g.length ? `<section class="section"><h2 class="section-title">Genres</h2><div class="genre-grid">${g.map((x, i) => `<button class="genre-tile g${i % 6}" type="button" data-action="search-for" data-q="${esc(x)}">${esc(x)}</button>`).join('')}</div></section>` : ''}
+    <section class="section"><h2 class="section-title">Artists</h2><div class="artist-list">${lib.artists.slice(0, 12).map(artistCard).join('')}</div></section>`;
+}
+
+function renderSearchPage() {
+  return `
+    <div class="search-page">
+      <h1 class="page-title">Search</h1>
+      <label class="search big">
+        ${ICON.search}
+        <input id="sq" type="search" placeholder="Songs, albums, artists, genres" value="${esc(searchText)}" autocomplete="off" enterkeyhint="search">
+      </label>
+      <div id="search-results">${searchResultsHtml()}</div>
     </div>`;
-  if (html !== lastSidebar) {
-    el.innerHTML = html;
-    lastSidebar = html;
-  }
+}
+
+function updateSearchResults() {
+  const box = $('#search-results');
+  if (!box) return;
+  lists.search = [];
+  box.innerHTML = searchResultsHtml();
+  hydrateArt(box);
+  markPlaying();
 }
 
 // ================= boot =================
@@ -599,9 +705,8 @@ function route() {
   if ((m = h.match(/^album\/(.+)$/))) return { name: 'album', id: decodeURIComponent(m[1]) };
   if ((m = h.match(/^artist\/(.+)$/))) return { name: 'artist', id: decodeURIComponent(m[1]) };
   if ((m = h.match(/^playlist\/(.+)$/))) return { name: 'playlist', id: decodeURIComponent(m[1]) };
-  if (h === 'songs' || h === 'artists' || h === 'playlists' || h === 'albums') return { name: h };
-  // Tablets open on the dashboard; phones and computers on albums.
-  return { name: document.body.classList.contains('layout-tablet') ? 'home' : 'albums' };
+  if (['songs', 'artists', 'playlists', 'albums', 'search'].includes(h)) return { name: h };
+  return { name: 'home' };
 }
 
 const scrollMemory = new Map();
@@ -614,6 +719,7 @@ window.addEventListener('hashchange', () => {
   const go = () => {
     render();
     window.scrollTo(0, scrollMemory.get(location.hash) || 0);
+    if (route().name === 'search' && document.body.classList.contains('has-rail')) $('#sq')?.focus();
   };
   if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(go);
   else go();
@@ -638,8 +744,7 @@ function setMain(html) {
 function render() {
   const main = $('#main');
   lists = {};
-  renderSidebar();
-  const q = $('#q').value.trim().toLowerCase();
+  renderNav();
 
   if (!lib) {
     setMain(scanError ? errorBlock(scanError) : scanningBlock());
@@ -661,12 +766,12 @@ function render() {
 
   const r = route();
   let html;
-  if (q) html = renderSearch(q);
+  if (r.name === 'search') html = renderSearchPage();
   else if (r.name === 'album' && lib.albumsById[r.id]) html = renderAlbum(lib.albumsById[r.id]);
   else if (r.name === 'artist' && lib.artists.find((a) => a.name === r.id)) html = renderArtist(lib.artists.find((a) => a.name === r.id));
   else if (r.name === 'playlist') html = renderPlaylist(r.id);
-  else if (r.name === 'home' && document.body.classList.contains('layout-tablet')) html = renderDashboard();
-  else html = renderHome(['album', 'artist', 'playlist', 'home'].includes(r.name) ? 'albums' : r.name);
+  else if (r.name === 'home') html = renderDashboard();
+  else html = renderHome(['album', 'artist', 'playlist'].includes(r.name) ? 'albums' : r.name);
   if (!setMain(html)) { markPlaying(); if (sel.on) markSelected(); return; }
   hydrateArt(main);
   if (sel.on) markSelected();
@@ -3023,6 +3128,7 @@ function onOrganizeEvent(e) {
 let rulesTimer = 0;
 onRulesChange(() => {
   rebuild();
+  lastNav = '';
   render();
   updateLikeButton();
   clearTimeout(rulesTimer);
@@ -3053,7 +3159,11 @@ async function pullRules() {
 // ================= events =================
 function wireStaticUi() {
   $('#connect').addEventListener('click', connect);
-  $('#q').addEventListener('input', () => render());
+  $('#main').addEventListener('input', (e) => {
+    if (e.target.id !== 'sq') return;
+    searchText = e.target.value;
+    updateSearchResults();
+  });
 
   const onAction = (e) => {
     const el = e.target.closest('[data-action]');
@@ -3085,7 +3195,9 @@ function wireStaticUi() {
     else if (action === 'dash-liked') location.hash = 'playlist/liked';
     else if (action === 'dash-playlists') location.hash = 'playlists';
     else if (action === 'dash-sleep') openSleep();
-    else if (action === 'home') { e.preventDefault(); $('#q').value = ''; location.hash = ''; render(); }
+    else if (action === 'home') { e.preventDefault(); location.hash = 'home'; }
+    else if (action === 'profile') openProfile();
+    else if (action === 'search-for') { searchText = el.dataset.q; const i = $('#sq'); if (i) i.value = searchText; updateSearchResults(); }
     else if (action === 'select') { if (sel.on) endSelect(); else startSelect(); }
     else if (action === 'add-songs') openAddSongs(el.dataset.id);
     else if (action === 'new-playlist') { openPlaylistPicker([]); $('#sheet-title').textContent = 'New playlist'; }
@@ -3102,6 +3214,8 @@ function wireStaticUi() {
   };
   $('#main').addEventListener('click', onAction);
   $('#sidebar').addEventListener('click', onAction);
+  $('#sheet-body').addEventListener('click', onProfileEvent);
+  $('#sheet-body').addEventListener('submit', onProfileEvent);
   const body = $('#sheet-body');
   body.addEventListener('click', onAction);
   body.addEventListener('click', onSettingsEvent);
@@ -3232,7 +3346,7 @@ function wireStaticUi() {
 
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea, select')) {
-      if (e.key === 'Escape' && e.target.id === 'q') { $('#q').value = ''; render(); $('#q').blur(); }
+      if (e.key === 'Escape' && e.target.id === 'sq') { searchText = ''; e.target.value = ''; updateSearchResults(); e.target.blur(); }
       return;
     }
     if (e.key === ' ' && !e.target.matches?.('.row[role="button"], button, .ly, .drop-zone')) { e.preventDefault(); withAuth(() => player.toggle()); }
@@ -3241,7 +3355,23 @@ function wireStaticUi() {
     else if (e.key === 'ArrowLeft' && e.shiftKey) player.prev();
   });
 
-  $('.brand').addEventListener('click', (e) => { e.preventDefault(); $('#q').value = ''; location.hash = ''; render(); });
+  $('#tabbar').addEventListener('click', onAction);
+  $('#avatar-input').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      setProfile({ photo: await avatarFromFile(f) });
+      toast('Photo saved.');
+      if (sheetKind === 'profile') openProfile(false);
+    } catch (err) {
+      toast("Couldn't use that image.");
+    }
+  });
+  // '/' focuses search from anywhere (computers).
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && !e.target.closest('input, textarea')) { e.preventDefault(); location.hash = 'search'; setTimeout(() => $('#sq')?.focus(), 60); }
+  });
 }
 
 /**

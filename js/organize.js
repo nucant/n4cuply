@@ -144,6 +144,14 @@ export function clearTrackFix(key) {
 
 export const trackFix = (key) => rules.tracks[key] || null;
 
+// ---------------------------------------------------------------- profile
+export const getProfile = () => rules.profile || {};
+
+export function setProfile(patch) {
+  rules.profile = { ...(rules.profile || {}), ...patch };
+  touch();
+}
+
 // ---------------------------------------------------------------- likes & playlists
 export const isLiked = (key) => !!rules.likes?.[key];
 
