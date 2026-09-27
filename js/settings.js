@@ -13,6 +13,7 @@ const DEFAULTS = {
   artistInfo: true,      // artist photos + bios from Wikipedia
   crossfade: 0,          // seconds between songs (0 = gapless hand-over)
   layout: 'auto',        // auto | phone | tablet | desktop
+  playerStyle: 'default', // default | vinyl | cassette | vintage
   volume: 100,
 };
 

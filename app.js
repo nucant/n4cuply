@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.7'; // keep in sync with version.json
+const APP_VERSION = '2.9'; // keep in sync with version.json
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -64,6 +64,7 @@ const ICON = {
   home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v8.5a1.5 1.5 0 01-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 014 19.5z"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   signal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v4M8 10v8M12 6v12M16 11v7M20 8v10"/></svg>',
+  disc: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3a9 9 0 016.4 2.6"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -319,20 +320,19 @@ function drawViz() {
         for (let k = lo; k < hi; k++) sum += data[k];
         v = Math.pow(sum / (hi - lo) / 255, 1.7); // spread loud levels so tops don't flatten
       } else if (playing) {
-        S.fake[i] = Math.min(1, Math.max(0.1, S.fake[i] + (Math.random() - 0.5) * 0.3));
-        const beat = Math.max(0, Math.sin(t * 7.2)) ** 6; // a thump roughly every beat
-        v = Math.pow(1 - i / VIZ_N, 1.1) * (0.3 + 0.55 * S.fake[i] + 0.35 * beat * (1 - i / VIZ_N));
+        S.fake[i] = Math.min(1, Math.max(0.1, S.fake[i] + (Math.random() - 0.5) * 0.12));
+        v = Math.pow(1 - i / VIZ_N, 1.1) * (0.3 + 0.5 * S.fake[i]) * (0.8 + 0.2 * Math.sin(t * 2.2 + i * 0.3));
       } else {
         v = 0.02 * (1 - i / VIZ_N);
       }
       v = Math.min(1, v);
       // Spring: overshoots and settles, which reads as bounce.
-      S.vel[i] += (v - S.level[i]) * 0.32;
-      S.vel[i] *= 0.68;
+      S.vel[i] += (v - S.level[i]) * 0.2;
+      S.vel[i] *= 0.52; // well damped: smooth, barely any overshoot
       S.level[i] = Math.max(0, Math.min(1.08, S.level[i] + S.vel[i]));
       // Peak dot: kicked up by the bar, then falls with gravity.
       if (S.level[i] >= S.peak[i]) { S.peak[i] = S.level[i]; S.peakVel[i] = Math.max(S.peakVel[i], S.vel[i] * 0.9); }
-      S.peakVel[i] -= 0.0035;
+      S.peakVel[i] = Math.min(S.peakVel[i], 0.004) - 0.0016; // soft float, slow fall
       S.peak[i] = Math.max(S.level[i], S.peak[i] + S.peakVel[i]);
       if (S.peak[i] === S.level[i] && S.peakVel[i] < 0) S.peakVel[i] = 0;
       if (i < 5) bass += S.level[i] / 5;
@@ -341,35 +341,41 @@ function drawViz() {
 
     g.clearRect(0, 0, W, H);
     // Bass halo behind the mountain.
-    const halo = g.createRadialGradient(cx, base, 4, cx, base, W * (0.25 + S.bass * 0.35));
-    halo.addColorStop(0, `rgba(80, 140, 255, ${0.28 + S.bass * 0.45})`);
-    halo.addColorStop(0.5, `rgba(139, 92, 246, ${0.12 + S.bass * 0.2})`);
+    const halo = g.createRadialGradient(cx, base, 4, cx, base, W * (0.3 + S.bass * 0.12));
+    halo.addColorStop(0, `hsla(${(220 + (t * 14) % 360) % 360}, 90%, 60%, ${0.14 + S.bass * 0.16})`);
+    halo.addColorStop(0.5, `hsla(${(290 + (t * 14) % 360) % 360}, 80%, 55%, ${0.06 + S.bass * 0.08})`);
     halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
     g.fillStyle = halo;
     g.fillRect(0, 0, W, H);
 
-    g.globalCompositeOperation = 'lighter'; // neon: overlapping glow adds up
-    g.fillStyle = grad;
-    g.shadowColor = 'rgba(61, 123, 255, .95)';
-    g.shadowBlur = 16 + S.bass * 14;
+    // RGB neon: each bar has its own hue, and the whole spectrum drifts slowly.
+    const drift = (t * 14) % 360;
+    const hue = (i) => (200 + drift + (i / VIZ_N) * 140) % 360;
+    g.shadowBlur = 12;
     for (let i = 0; i < VIZ_N; i++) {
       const h = Math.max(2, S.level[i] * base * 0.92);
+      const hh = hue(i);
+      const col = g.createLinearGradient(0, base, 0, base - h);
+      col.addColorStop(0, `hsla(${hh}, 95%, 55%, .95)`);
+      col.addColorStop(1, `hsla(${(hh + 35) % 360}, 95%, 70%, .95)`);
+      g.fillStyle = col;
+      g.shadowColor = `hsla(${hh}, 100%, 60%, .7)`;
       for (const x of xs(i)) {
         g.beginPath();
         if (g.roundRect) g.roundRect(x, base - h, bw, h, bw / 2); else g.rect(x, base - h, bw, h);
         g.fill();
       }
     }
-    // Peak dots.
-    g.shadowColor = 'rgba(0, 240, 255, 1)';
-    g.shadowBlur = 12;
-    g.fillStyle = '#d8fbff';
+    // Peak dots, same hue, lighter.
+    g.shadowBlur = 8;
     for (let i = 0; i < VIZ_N; i++) {
       if (S.peak[i] < 0.03) continue;
-      const y = base - S.peak[i] * base * 0.92 - 6;
+      const y = base - S.peak[i] * base * 0.92 - 5;
+      g.fillStyle = `hsl(${(hue(i) + 35) % 360}, 100%, 82%)`;
+      g.shadowColor = `hsla(${hue(i)}, 100%, 65%, .9)`;
       for (const x of xs(i)) {
         g.beginPath();
-        g.arc(x + bw / 2, y, Math.max(1.4, bw * 0.36), 0, Math.PI * 2);
+        g.arc(x + bw / 2, y, Math.max(1.3, bw * 0.3), 0, Math.PI * 2);
         g.fill();
       }
     }
@@ -388,7 +394,7 @@ function drawViz() {
     g.fillStyle = line;
     g.fillRect(0, base, W, 1.6);
     // The whole visualizer breathes with the bass.
-    canvas.style.transform = `scale(${1 + S.bass * 0.035})`;
+    canvas.style.transform = '';
     vizFrame = requestAnimationFrame(tick);
   };
   tick();
@@ -1418,8 +1424,10 @@ function updatePlayerUi() {
     $('#np-bg-img').classList.add('fading');
   }
   paintArt($('#mini-art'), seed, t.cover);
+  renderDeck();
   paintArt($('#np-art'), seed, t.cover).then((c) => {
     if (!c || player.current()?.id !== t.id) return;
+    setDeckCover(c.url);
     player.setArtwork(t.id, c.url);
     $('#np-bg-img').style.backgroundImage = settings.dynamicColor ? `url("${c.url}")` : '';
     requestAnimationFrame(() => $('#np-bg-img').classList.remove('fading'));
@@ -1452,6 +1460,7 @@ function updateLikeButton() {
 
 function updatePlayState() {
   const s = player.state;
+  $('#now').classList.toggle('playing', !!s.playing);
   const dashPlay = document.querySelector('.dash-play');
   if (dashPlay) dashPlay.innerHTML = s.loading ? ICON.spinner : s.playing ? ICON.pause : ICON.play;
   const icon = s.loading ? ICON.spinner : s.playing ? ICON.pause : ICON.play;
@@ -1498,6 +1507,7 @@ function updateTime() {
   const cur = seeking ? (seek.value / 1000) * d : a.currentTime;
   $('#t-cur').textContent = fmt(cur);
   $('#t-left').textContent = '-' + fmt(Math.max(0, d - cur));
+  $('#now').style.setProperty('--prog', (d > 0 ? a.currentTime / d : 0).toFixed(4));
   syncLyrics(a.currentTime);
   countPlay(player.current(), a.currentTime);
   updateDashboardTime();
@@ -1512,6 +1522,7 @@ function setNowOpen(open, push = true, { instant = false } = {}) {
     el.classList.remove('closing');
     el.hidden = false;
     updateTime();
+    renderDeck();
   } else if (instant) {
     // Already animated away by a swipe: just hide.
     el.hidden = true;
@@ -1523,6 +1534,117 @@ function setNowOpen(open, push = true, { instant = false } = {}) {
   document.body.classList.toggle('now-open', open);
   if (push && open) history.pushState({ now: true }, '');
   else if (push && !open && history.state?.now) history.back();
+}
+
+// ================= player styles: default / vinyl / cassette / vintage =================
+const PLAYER_STYLES = [['default', 'Default'], ['vinyl', 'Vinyl'], ['cassette', 'Cassette'], ['vintage', 'Vintage hi-fi']];
+
+function deckHtml(style, t) {
+  if (style === 'vinyl') {
+    return `
+      <div class="deck vinyl">
+        <div class="vinyl-plinth">
+          <div class="vinyl-record"><span class="vinyl-label deck-cover"></span><span class="vinyl-hole"></span></div>
+          <div class="vinyl-arm"><span class="arm-base"></span><span class="arm-rod"></span><span class="arm-head"></span></div>
+          <span class="vinyl-led"></span>
+        </div>
+      </div>`;
+  }
+  if (style === 'cassette') {
+    return `
+      <div class="deck cassette">
+        <div class="tape">
+          <div class="tape-label">
+            <b>${esc(t?.title || 'N4cuply')}</b><small>${esc(t ? [t.artist, t.album].filter(Boolean).join(' · ') : 'Side A')}</small>
+            <span class="tape-side">A</span>
+          </div>
+          <div class="tape-window">
+            <span class="tape-reel l"><i></i></span>
+            <span class="tape-band"></span>
+            <span class="tape-reel r"><i></i></span>
+          </div>
+          <div class="tape-foot"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </div>`;
+  }
+  if (style === 'vintage') {
+    return `
+      <div class="deck vintage">
+        <div class="hifi">
+          <div class="hifi-top"><span class="hifi-brand">N4cuply</span><span class="hifi-model">Stereo Receiver · ${esc(t?.meta?.codec || 'Hi-Fi')}</span></div>
+          <div class="hifi-face">
+            <div class="vu"><span class="vu-scale"></span><span class="vu-needle" id="vu-l"></span><em>L</em></div>
+            <span class="hifi-cover deck-cover"></span>
+            <div class="vu"><span class="vu-scale"></span><span class="vu-needle" id="vu-r"></span><em>R</em></div>
+          </div>
+          <div class="hifi-knobs"><span></span><span class="dial"><i></i></span><span></span></div>
+        </div>
+      </div>`;
+  }
+  return '';
+}
+
+let deckKey = '';
+function renderDeck() {
+  const style = settings.playerStyle || 'default';
+  const t = player.current();
+  const now = $('#now');
+  for (const [s] of PLAYER_STYLES) now.classList.toggle('style-' + s, s === style);
+  const key = `${style}|${t?.id || ''}|${t?.title || ''}`;
+  if (key !== deckKey) {
+    deckKey = key;
+    $('#np-deck').innerHTML = deckHtml(style, t);
+    const c = t?.cover && peekCover(t.cover);
+    if (c) setDeckCover(c.url);
+  }
+  if (style === 'vintage') startVu(); else stopVu();
+}
+
+function setDeckCover(url) {
+  document.querySelectorAll('#np-deck .deck-cover').forEach((el) => { el.style.backgroundImage = url ? `url("${url}")` : ''; });
+}
+
+function cyclePlayerStyle() {
+  const i = PLAYER_STYLES.findIndex(([s]) => s === (settings.playerStyle || 'default'));
+  const [next, label] = PLAYER_STYLES[(i + 1) % PLAYER_STYLES.length];
+  setSetting('playerStyle', next);
+  renderDeck();
+  toast(`Player style: ${label}`);
+}
+
+// Analogue VU meters for the vintage style.
+let vuFrame = 0;
+const vu = { l: 0, r: 0 };
+function startVu() {
+  if (vuFrame) return;
+  const step = () => {
+    const nl = document.getElementById('vu-l');
+    const nr = document.getElementById('vu-r');
+    if (!nl || !nowOpen) { vuFrame = 0; return; }
+    const playing = !player.audio.paused;
+    const an = player.getAnalyser();
+    let lvl = 0;
+    if (an && playing) {
+      const d = new Uint8Array(an.frequencyBinCount);
+      an.getByteFrequencyData(d);
+      let s = 0;
+      for (let i = 0; i < d.length / 2; i++) s += d[i];
+      lvl = Math.min(1, (s / (d.length / 2) / 255) * 1.6);
+    } else if (playing) {
+      lvl = 0.45 + 0.25 * Math.sin(performance.now() / 260) * Math.sin(performance.now() / 700) + Math.random() * 0.12;
+    }
+    // Needles have weight: quick-ish up, slow down.
+    vu.l += ((lvl * (0.92 + Math.random() * 0.08)) - vu.l) * (lvl > vu.l ? 0.3 : 0.08);
+    vu.r += ((lvl * (0.9 + Math.random() * 0.1)) - vu.r) * (lvl > vu.r ? 0.3 : 0.08);
+    nl.style.transform = `rotate(${-48 + vu.l * 96}deg)`;
+    nr.style.transform = `rotate(${-48 + vu.r * 96}deg)`;
+    vuFrame = requestAnimationFrame(step);
+  };
+  vuFrame = requestAnimationFrame(step);
+}
+function stopVu() {
+  cancelAnimationFrame(vuFrame);
+  vuFrame = 0;
 }
 
 // ================= lyrics =================
@@ -1912,6 +2034,12 @@ async function openSettings(push = true) {
     <div class="info-group set-group">
       <h4>Display</h4>
       <div class="set-row col">
+        <span><b>Player style</b><small>How Now Playing looks. You can also switch with the record button at the top of Now Playing.</small></span>
+        <div class="seg small" role="radiogroup" aria-label="Player style">
+          ${PLAYER_STYLES.map(([v, label]) => `<button type="button" role="radio" aria-checked="${(settings.playerStyle || 'default') === v}" class="${(settings.playerStyle || 'default') === v ? 'on' : ''}" data-pstyle="${v}">${label}</button>`).join('')}
+        </div>
+      </div>
+      <div class="set-row col">
         <span><b>Layout</b><small>${(settings.layout || 'auto') === 'auto' ? `Auto picks the layout for your screen · now using ${LAYOUT_NAMES[autoLayout()]}` : 'Fixed layout. Choose Auto to switch with your screen size.'}</small></span>
         <div class="seg small" role="radiogroup" aria-label="Layout">
           ${[['auto', 'Auto'], ['phone', 'Phone'], ['tablet', 'Tablet'], ['desktop', 'Computer']].map(([v, label]) => `<button type="button" role="radio" aria-checked="${(settings.layout || 'auto') === v}" class="${(settings.layout || 'auto') === v ? 'on' : ''}" data-layout="${v}">${label}</button>`).join('')}
@@ -1963,6 +2091,13 @@ function onSettingsEvent(e) {
     return;
   }
   if (e.type !== 'click') return;
+  const ps = e.target.closest('[data-pstyle]');
+  if (ps) {
+    setSetting('playerStyle', ps.dataset.pstyle);
+    renderDeck();
+    openSettings(false);
+    return;
+  }
   const lay = e.target.closest('[data-layout]');
   if (lay) {
     setSetting('layout', lay.dataset.layout);
@@ -3531,6 +3666,8 @@ function wireStaticUi() {
   $('#np-info').innerHTML = ICON.info;
   const infoCurrent = () => { const t = player.current(); if (t) openTrackInfo(t.id); };
   $('#np-more').addEventListener('click', () => { const t = player.current(); if (t) openSongMenu(t.id); });
+  $('#np-style').innerHTML = ICON.disc;
+  $('#np-style').addEventListener('click', cyclePlayerStyle);
   $('#np-info').addEventListener('click', infoCurrent);
   $('#np-like').addEventListener('click', () => {
     const t = player.current();

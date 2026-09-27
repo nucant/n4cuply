@@ -1411,3 +1411,187 @@ body.wide .sheet { animation-name: sheetInSide; }
 /* The Walkman drawing sets its own strokes; don't inherit the icon outline style. */
 .walkman { stroke: none; stroke-width: 0; }
 .walkman text { stroke: none; }
+
+/* ================= v2.8: player styles ================= */
+.np-top-right { display: flex; gap: 8px; }
+.np-deck { display: none; }
+.now:not(.style-default) .np-art { display: none; }
+.now:not(.style-default) .np-deck { display: grid; place-items: center; width: 100%; }
+.deck { width: min(86vw, 520px); aspect-ratio: 1; display: grid; place-items: center; }
+body.np-narrow .now:not(.style-default) .np-art-wrap { flex: none; min-height: 0; justify-content: center; padding: calc(78px + var(--safe-t)) 0 10px; }
+body.np-narrow .now:not(.style-default) .np-body { margin-top: 18px; }
+body.np-wide .now:not(.style-default) .np-art-wrap { display: grid; place-items: center; }
+body.np-wide .deck { width: min(40vw, 540px); }
+.now .spin { animation-play-state: paused; }
+.now.playing .spin { animation-play-state: running; }
+
+/* ---------- vinyl ---------- */
+.vinyl-plinth {
+  position: relative; width: 100%; aspect-ratio: 1; border-radius: 22px;
+  background: linear-gradient(145deg, #2a2d36, #15171d); box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.vinyl-record {
+  position: absolute; inset: 7%; border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 31%, rgba(255, 255, 255, .04) 31.5% 32%, transparent 32.5%),
+    repeating-radial-gradient(circle, #0c0c0f 0 2px, #16161b 2px 3px),
+    #0c0c0f;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  animation: spinRec 1.8s linear infinite; animation-play-state: paused;
+}
+.now.playing .vinyl-record { animation-play-state: running; }
+.vinyl-record::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 20%, rgba(255, 255, 255, .09) 25%, transparent 32% 70%, rgba(255, 255, 255, .06) 76%, transparent 82%);
+}
+@keyframes spinRec { to { transform: rotate(360deg); } }
+.vinyl-label {
+  position: absolute; inset: 33%; border-radius: 50%; background: var(--dash-grad) center / cover;
+  box-shadow: 0 0 0 3px #0c0c0f, 0 0 0 5px rgba(255, 255, 255, .08);
+}
+.vinyl-hole { position: absolute; left: 50%; top: 50%; width: 3.2%; height: 3.2%; border-radius: 50%; background: #c9ced8; transform: translate(-50%, -50%); box-shadow: 0 0 0 3px #0c0c0f; }
+.vinyl-arm { position: absolute; right: 6%; top: 6%; width: 36%; height: 70%; transform-origin: 82% 10%; transform: rotate(-26deg); transition: transform .9s var(--spring); pointer-events: none; }
+.now.playing .vinyl-arm { transform: rotate(4deg); }
+.arm-base { position: absolute; right: 6%; top: 0; width: 26%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #e8ebf1, #7b818d); box-shadow: 0 6px 14px rgba(0, 0, 0, .5); }
+.arm-rod { position: absolute; right: 18%; top: 9%; width: 4%; height: 84%; border-radius: 4px; background: linear-gradient(90deg, #d7dbe3, #8b919c); transform: rotate(14deg); transform-origin: top; }
+.arm-head { position: absolute; left: 22%; bottom: 3%; width: 16%; height: 12%; border-radius: 4px; background: linear-gradient(180deg, #d7dbe3, #737985); transform: rotate(14deg); }
+.vinyl-led { position: absolute; left: 6%; bottom: 6%; width: 8px; height: 8px; border-radius: 50%; background: #334; }
+.now.playing .vinyl-led { background: var(--dash-cyan); box-shadow: 0 0 10px var(--dash-cyan); }
+
+/* ---------- cassette ---------- */
+.tape {
+  --prog: 0;
+  position: relative; width: 100%; aspect-ratio: 1.58; border-radius: 16px; padding: 5% 5% 0;
+  background: linear-gradient(160deg, #262a35, #15171e); box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .07);
+  display: grid; grid-template-rows: auto 1fr auto;
+}
+.tape-label {
+  position: relative; border-radius: 8px; padding: 3.5% 5%; display: grid; gap: 2px;
+  background: linear-gradient(180deg, #f3ecdc 0 62%, #e2533f 62% 70%, #f3ecdc 70% 78%, #3a7bff 78% 86%, #f3ecdc 86%);
+  color: #1b1b22;
+}
+.tape-label b { font-size: clamp(14px, 3.4vw, 20px); font-weight: 800; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: "Marker Felt", "Comic Sans MS", var(--font); }
+.tape-label small { font-size: clamp(10px, 2.4vw, 13px); color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tape-side { position: absolute; right: 4%; top: 12%; font-weight: 900; font-size: clamp(16px, 4vw, 24px); color: #e2533f; }
+.tape-window {
+  position: relative; margin: 5% 12% 0; height: 46%; align-self: start; border-radius: 30px;
+  background: linear-gradient(180deg, #0b0d12, #1b1e27); box-shadow: inset 0 2px 8px rgba(0, 0, 0, .8);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 6%;
+}
+.tape-reel {
+  position: relative; z-index: 1; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, #efe9dc 0 34%, #3b2a1d 35% 100%);
+  animation: spinRec 2.4s linear infinite; animation-play-state: paused;
+}
+.now.playing .tape-reel { animation-play-state: running; }
+.tape-reel.l { width: calc(34% - var(--prog) * 14%); }
+.tape-reel.r { width: calc(20% + var(--prog) * 14%); }
+.tape-reel i { position: absolute; inset: 22%; border-radius: 50%; border: 3px dashed #1b1b22; }
+.tape-band { position: absolute; left: 20%; right: 20%; bottom: 18%; height: 3px; background: #3b2a1d; border-radius: 2px; }
+.tape-foot { display: flex; justify-content: center; gap: 12%; padding: 3% 0 4%; }
+.tape-foot span { width: 5%; aspect-ratio: 1; border-radius: 50%; background: #0b0d12; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .9); }
+
+/* ---------- vintage hi-fi ---------- */
+.hifi {
+  width: 100%; border-radius: 18px; padding: 4%; display: grid; gap: 4%;
+  background:
+    repeating-linear-gradient(92deg, rgba(0, 0, 0, .08) 0 3px, transparent 3px 9px),
+    linear-gradient(135deg, #7a4a2a, #4b2c18 60%, #3a2213);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .15);
+}
+.hifi-top { display: flex; justify-content: space-between; align-items: baseline; color: #f3d9a6; }
+.hifi-brand { font-weight: 900; font-style: italic; font-size: clamp(16px, 3.6vw, 22px); letter-spacing: .02em; }
+.hifi-model { font-size: clamp(9px, 2vw, 12px); letter-spacing: .12em; text-transform: uppercase; opacity: .8; }
+.hifi-face { display: grid; grid-template-columns: 1fr .8fr 1fr; gap: 4%; align-items: center; padding: 4%; border-radius: 12px; background: linear-gradient(180deg, #d8d2c4, #a9a18f); box-shadow: inset 0 2px 6px rgba(0, 0, 0, .35); }
+.vu {
+  position: relative; aspect-ratio: 1.35; border-radius: 8px; overflow: hidden;
+  background: radial-gradient(120% 100% at 50% 100%, #fff6d8, #f1d98c);
+  box-shadow: inset 0 0 0 2px #2b2016, 0 0 18px rgba(255, 200, 90, .35);
+}
+.now.playing .vu { box-shadow: inset 0 0 0 2px #2b2016, 0 0 26px rgba(255, 196, 80, .6); }
+.vu-scale {
+  position: absolute; left: 10%; right: 10%; top: 18%; height: 70%; border-radius: 50% 50% 0 0;
+  border-top: 2px solid #2b2016;
+  background: conic-gradient(from 250deg at 50% 100%, transparent 0 62deg, rgba(200, 40, 30, .6) 62deg 100deg, transparent 100deg);
+  -webkit-mask: radial-gradient(circle at 50% 100%, transparent 58%, #000 59%); mask: radial-gradient(circle at 50% 100%, transparent 58%, #000 59%);
+}
+.vu-needle { position: absolute; left: calc(50% - 1px); bottom: 8%; width: 2px; height: 72%; background: #1a130d; transform-origin: bottom center; transform: rotate(-48deg); border-radius: 2px; }
+.vu em { position: absolute; left: 8%; bottom: 6%; font-style: normal; font-weight: 800; font-size: 11px; color: #2b2016; }
+.hifi-cover { aspect-ratio: 1; border-radius: 10px; background: var(--dash-grad) center / cover; box-shadow: 0 0 0 4px #b08a4a, 0 0 0 6px #5a3e1c, 0 10px 20px rgba(0, 0, 0, .45); }
+.hifi-knobs { display: flex; justify-content: space-between; align-items: center; padding: 0 6%; }
+.hifi-knobs span { width: 12%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f1f1f1, #8d8d8d 60%, #4b4b4b); box-shadow: 0 4px 10px rgba(0, 0, 0, .5); }
+.hifi-knobs .dial { width: 44%; aspect-ratio: auto; height: 18px; border-radius: 9px; background: #1b140e; position: relative; overflow: hidden; }
+.hifi-knobs .dial i { position: absolute; top: 3px; bottom: 3px; width: 3px; left: calc(6% + var(--prog, 0) * 88%); background: #ff8a3d; box-shadow: 0 0 8px #ff8a3d; border-radius: 2px; }
+
+/* ================= v2.8: phone Home Signal card = technical only ================= */
+body.layout-phone .dash-visual { min-height: 0; overflow: visible; background: var(--dash-card); }
+body.layout-phone .dash-visual-art, body.layout-phone .dash-visual-shade, body.layout-phone .dash-signal .dash-lyric { display: none; }
+body.layout-phone .dash-visual-top { position: static; padding: 16px 16px 0; }
+body.layout-phone .dash-signal { position: static; margin: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 12px 16px 16px; }
+
+/* ================= v2.9: colourful vinyl + cassette, lyric wrapping ================= */
+/* Neon glow stage behind every deck. */
+.np-deck { position: relative; isolation: isolate; }
+.now:not(.style-default) .np-deck::before {
+  content: ""; position: absolute; inset: -8% -4%; z-index: -1; border-radius: 50%; filter: blur(40px); opacity: .75;
+  background:
+    radial-gradient(45% 45% at 25% 30%, color-mix(in srgb, var(--tint-mid, #3d7bff) 80%, transparent), transparent 70%),
+    radial-gradient(45% 45% at 78% 70%, rgba(255, 79, 216, .55), transparent 70%),
+    radial-gradient(40% 40% at 70% 20%, rgba(0, 240, 255, .4), transparent 70%);
+  animation: stageDrift 12s ease-in-out infinite alternate;
+}
+@keyframes stageDrift { to { transform: rotate(18deg) scale(1.06); } }
+
+/* Vinyl: coloured plinth, neon rim, iridescent record, coloured slipmat. */
+.vinyl-plinth {
+  background:
+    radial-gradient(90% 70% at 0% 0%, color-mix(in srgb, var(--tint-mid, #3d7bff) 55%, transparent), transparent 65%),
+    radial-gradient(80% 70% at 100% 100%, rgba(255, 79, 216, .38), transparent 65%),
+    linear-gradient(145deg, #1f2448, #10111f);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .1), 0 0 50px rgba(61, 123, 255, .3), inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+.vinyl-plinth::before {
+  content: ""; position: absolute; inset: 5%; border-radius: 50%;
+  background: conic-gradient(from 0deg, #00f0ff, #3d7bff, #8b5cf6, #ff4fd8, #ffb03d, #00f0ff);
+  opacity: .55; filter: blur(14px);
+}
+.vinyl-record::after {
+  background:
+    conic-gradient(from 0deg, transparent 0 18%, rgba(0, 240, 255, .16) 24%, transparent 30% 66%, rgba(255, 79, 216, .16) 74%, transparent 80%),
+    conic-gradient(from 90deg, transparent 0 40%, rgba(255, 255, 255, .08) 45%, transparent 50%);
+}
+.vinyl-label { box-shadow: 0 0 0 3px #0c0c0f, 0 0 0 6px var(--tint-soft, #9ab8ff), 0 0 22px color-mix(in srgb, var(--tint-mid, #3d7bff) 60%, transparent); }
+.now.playing .vinyl-led { background: #39ff9f; box-shadow: 0 0 12px #39ff9f; }
+
+/* Cassette: see-through coloured shell, retro stripes under the text. */
+.tape {
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, .14), transparent 35%),
+    radial-gradient(90% 80% at 0% 100%, rgba(255, 79, 216, .55), transparent 60%),
+    radial-gradient(90% 80% at 100% 0%, rgba(0, 240, 255, .45), transparent 60%),
+    linear-gradient(160deg, #3b2a8f, #1a1446);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .14), 0 0 50px rgba(139, 92, 246, .35), inset 0 1px 0 rgba(255, 255, 255, .2);
+}
+.tape-label { background: #f6efdf; padding-bottom: 9%; overflow: hidden; }
+.tape-label::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 12%; height: 18%;
+  background: linear-gradient(180deg, #ff5a3d 0 33%, #ffb03d 33% 66%, #22c3ee 66%);
+}
+.tape-window { background: linear-gradient(180deg, rgba(8, 10, 20, .85), rgba(30, 20, 60, .85)); box-shadow: inset 0 2px 8px rgba(0, 0, 0, .8), 0 0 0 2px rgba(255, 255, 255, .1); }
+.tape-reel { background: radial-gradient(circle, #f6efdf 0 34%, #4a2f1e 35% 100%); box-shadow: 0 0 14px rgba(255, 176, 61, .25); }
+.tape-foot span { background: #140f30; }
+
+/* Lyrics: long lines wrap (max 2 lines in the preview) instead of running off screen. */
+.np-lyric { min-width: 0; max-width: 100%; }
+.np-lyric span {
+  min-width: 0; white-space: normal; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.25;
+}
+.np-lyric svg { flex: none; }
+.lyrics-view { overflow-x: hidden; min-width: 0; }
+.ly { min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: normal; text-wrap: pretty; transform-origin: center center; }
+.ly .w { white-space: pre-wrap; }
+body.layout-phone .ly { font-size: clamp(21px, 5.6vw, 26px); }
+body.layout-phone .ly.on { transform: none; }
+.lyrics { overflow-wrap: anywhere; }
+.dash-lyric { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
