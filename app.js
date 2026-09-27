@@ -11,8 +11,10 @@ import {
 } from './js/sources.js';
 import {
   analyze, mergeArtists, mergeAlbums, ignore, resetRules, getRules, adoptRules, onRulesChange, RULES_FILE,
-  setTrackFix, setTrackFixes, clearTrackFix,
+  setTrackFix, setTrackFixes, clearTrackFix, trackKeyOf, rekeyTrack,
+  isLiked, toggleLike, playlists, createPlaylist, addToPlaylist, removeFromPlaylist, renamePlaylist, deletePlaylist,
 } from './js/organize.js';
+import { analyzeAudio } from './js/analyze.js';
 import {
   findLyrics, findCover, findSongMatches, searchTermFor, isConfident,
 } from './js/online.js';
@@ -25,7 +27,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -50,6 +52,12 @@ const ICON = {
   pc: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
   wand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20L15 9M14 4v3M19 9h3M17.5 5.5l2-2M12 6.5l1.5 1.5M16 11l1.5 1.5"/></svg>',
   pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 4 4.5 7.1 4.5c2 0 3.6 1.1 4.9 2.8 1.3-1.7 2.9-2.8 4.9-2.8 3.1 0 5.4 2.9 4.3 6.2C19.5 15.4 12 20 12 20z"/></svg>',
+  heartFill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 4 4.5 7.1 4.5c2 0 3.6 1.1 4.9 2.8 1.3-1.7 2.9-2.8 4.9-2.8 3.1 0 5.4 2.9 4.3 6.2C19.5 15.4 12 20 12 20z"/></svg>',
+  playNext: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M4 11h10M4 16h6"/><path class="fill" d="M15 12.5v8l6-4z"/></svg>',
+  album: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -275,7 +283,8 @@ function route() {
   let m;
   if ((m = h.match(/^album\/(.+)$/))) return { name: 'album', id: decodeURIComponent(m[1]) };
   if ((m = h.match(/^artist\/(.+)$/))) return { name: 'artist', id: decodeURIComponent(m[1]) };
-  if (h === 'songs' || h === 'artists') return { name: h };
+  if ((m = h.match(/^playlist\/(.+)$/))) return { name: 'playlist', id: decodeURIComponent(m[1]) };
+  if (h === 'songs' || h === 'artists' || h === 'playlists') return { name: h };
   return { name: 'albums' };
 }
 
@@ -337,7 +346,8 @@ function render() {
   if (q) html = renderSearch(q);
   else if (r.name === 'album' && lib.albumsById[r.id]) html = renderAlbum(lib.albumsById[r.id]);
   else if (r.name === 'artist' && lib.artists.find((a) => a.name === r.id)) html = renderArtist(lib.artists.find((a) => a.name === r.id));
-  else html = renderHome(r.name === 'album' || r.name === 'artist' ? 'albums' : r.name);
+  else if (r.name === 'playlist') html = renderPlaylist(r.id);
+  else html = renderHome(['album', 'artist', 'playlist'].includes(r.name) ? 'albums' : r.name);
   if (!setMain(html)) { markPlaying(); return; }
   hydrateArt(main);
   const page = main.querySelector('[data-tint]');
@@ -422,6 +432,7 @@ function renderHome(tab) {
         <a href="#albums" class="${tab === 'albums' ? 'on' : ''}">Albums</a>
         <a href="#songs" class="${tab === 'songs' ? 'on' : ''}">Songs</a>
         <a href="#artists" class="${tab === 'artists' ? 'on' : ''}">Artists</a>
+        <a href="#playlists" class="${tab === 'playlists' ? 'on' : ''}">Playlists</a>
       </nav>
       <div class="home-actions">
         <button class="pill-btn light" type="button" data-action="play-list" data-list="all">${ICON.play}<span>Play all</span></button>
@@ -446,7 +457,8 @@ function renderHome(tab) {
     }
     return head + `<section class="section"><div class="artist-list">${lib.artists.map(artistCard).join('')}</div></section>`;
   }
-  return head + `<section class="section"><div class="grid">${lib.albums.map(albumCard).join('')}</div></section>`;
+  if (tab === 'playlists') return head + renderPlaylists();
+  return head + shelvesHtml() + `<section class="section">${lib.albums.length > 4 && (recent.length || Object.keys(plays).length) ? '<h2 class="section-title">All albums</h2>' : ''}<div class="grid">${lib.albums.map(albumCard).join('')}</div></section>`;
 }
 
 function renderAlbum(a) {
@@ -580,7 +592,7 @@ function fmt(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function songRow(t, list, i, { number = false, showArt = false, hideArtist = false } = {}) {
+function songRow(t, list, i, { number = false, showArt = false, hideArtist = false, playlistId = '' } = {}) {
   const sub = [hideArtist ? '' : t.artist, list === 'album' ? '' : t.album].filter(Boolean).join(' · ');
   return `
     <div class="row" role="button" tabindex="0" data-action="play-track" data-list="${list}" data-i="${i}" data-id="${esc(t.id)}">
@@ -590,7 +602,7 @@ function songRow(t, list, i, { number = false, showArt = false, hideArtist = fal
         ${t.meta && !t.meta.error ? qualityChip(t.meta) : `<span class="q">${esc(t.ext)}</span>`}
         <span class="dur">${t.duration ? fmt(t.duration) : ''}</span>
         <button class="more fix" type="button" data-action="fix-track" data-id="${esc(t.id)}" aria-label="Fix info and cover" title="Fix info & cover">${ICON.wand}</button>
-        <button class="more" type="button" data-action="track-info" data-id="${esc(t.id)}" aria-label="Song info">${ICON.more}</button>
+        <button class="more" type="button" data-action="song-menu" data-id="${esc(t.id)}" data-playlist="${esc(playlistId)}" aria-label="More">${ICON.more}</button>
       </span>
     </div>`;
 }
@@ -744,9 +756,19 @@ function updatePlayerUi() {
   $('#c-repeat').classList.toggle('on', s.repeat !== 'off');
   $('#c-repeat').setAttribute('aria-label', { off: 'Repeat off', all: 'Repeat all', one: 'Repeat one' }[s.repeat]);
   if (sheetKind === 'queue') openQueue(false);
-  if (sheetKind === 'info' && sheetTrackId === t.id) openTrackInfo(t.id, false);
+  if (sheetKind === 'info' && sheetTrackId === t.id && !$('#analysis .spectro')) openTrackInfo(t.id, false);
+  updateLikeButton();
   markPlaying();
   updatePlayState();
+}
+
+function updateLikeButton() {
+  const t = player.current();
+  const on = !!t && isLiked(t.key);
+  const btn = $('#np-like');
+  btn.innerHTML = on ? ICON.heartFill : ICON.heart;
+  btn.classList.toggle('liked', on);
+  btn.setAttribute('aria-label', on ? 'Remove from Liked songs' : 'Add to Liked songs');
 }
 
 function updatePlayState() {
@@ -1057,12 +1079,16 @@ function openTrackInfo(id, push = true) {
     html += group('Raw frames', rawOnly.slice(0, 40).map(([k, v]) => kv(k, v)).join(''));
     html += group('Tag', kv('Tag format', m.tagType));
   }
+  html += `<div class="info-group analysis-group"><h4>Audio analysis</h4><div id="analysis" class="analysis">
+    <p class="info-note">Spectrogram, lossless check (spots FLACs made from MP3s or fake Hi-Res), peak, loudness and dynamic range. Downloads the whole song once.</p>
+    <button class="pill-btn small light" type="button" data-action="analyze" data-id="${esc(t.id)}">Analyze</button></div></div>`;
   html += group('File', [
     kv('Name', t.file), kv('Size', fmtSize(t.size)), kv('Folder', t.path),
     kv('Modified in Drive', t.modified ? new Date(t.modified).toLocaleString() : ''),
   ].join(''));
   openSheet('info', 'Song info', html, push);
   sheetTrackId = id;
+  if (analysisCache.has(id)) $('#analysis').innerHTML = analysisHtml(analysisCache.get(id), t);
 }
 
 function openAlbumInfo(key) {
@@ -1090,10 +1116,11 @@ function openQueue(push = true) {
     return `<div class="row" role="button" tabindex="0" data-action="jump" data-pos="${s.pos + 1 + k}">
       <span class="art sm" data-seed="${esc(t.album)}" data-cover="${esc(t.cover)}"></span>
       <span class="row-text"><b>${esc(t.title)}</b><small>${esc([t.artist, t.album].filter(Boolean).join(' · '))}</small></span>
-      <span class="row-end"><span class="dur">${t.duration ? fmt(t.duration) : ''}</span></span>
+      <span class="row-end"><span class="dur">${t.duration ? fmt(t.duration) : ''}</span>
+      <button class="more" type="button" data-action="dequeue" data-pos="${s.pos + 1 + k}" aria-label="Remove from queue">${ICON.close}</button></span>
     </div>`;
   });
-  const html = items.length ? `<div class="rows">${items.join('')}</div>`
+  const html = items.length ? `<div class="set-buttons"><button class="pill-btn small" type="button" data-action="clear-queue">Clear up next</button></div><div class="rows">${items.join('')}</div>`
     : `<p class="info-note first">${s.repeat === 'all' ? 'The queue will start again from the top.' : 'Nothing plays after this song.'}</p>`;
   openSheet('queue', 'Up next', html, push);
 }
@@ -1177,6 +1204,12 @@ async function openSettings(push = true) {
           ${['off', 'track', 'album'].map((v) => `<button type="button" role="radio" aria-checked="${rg === v}" class="${rg === v ? 'on' : ''}" data-rg="${v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}
         </div>
       </div>
+      <div class="set-row col">
+        <span><b>Crossfade</b><small>Blend the end of each song into the next. Off still starts the next song without a gap.</small></span>
+        <div class="seg small" role="radiogroup" aria-label="Crossfade">
+          ${[0, 3, 6, 9, 12].map((v) => `<button type="button" role="radio" aria-checked="${settings.crossfade === v}" class="${settings.crossfade === v ? 'on' : ''}" data-xf="${v}">${v ? v + ' s' : 'Off'}</button>`).join('')}
+        </div>
+      </div>
     </div>
 
     <div class="info-group set-group">
@@ -1222,6 +1255,13 @@ function onSettingsEvent(e) {
     return;
   }
   if (e.type !== 'click') return;
+  const xf = e.target.closest('[data-xf]');
+  if (xf) {
+    setSetting('crossfade', Number(xf.dataset.xf));
+    player.setCrossfade(settings.crossfade);
+    openSettings(false);
+    return;
+  }
   const rg = e.target.closest('[data-rg]');
   if (rg) {
     setSetting('replayGain', rg.dataset.rg);
@@ -1497,6 +1537,286 @@ function wireDragDrop() {
   });
 }
 
+// ================= song menu, likes, playlists =================
+function openSongMenu(trackId, { playlistId = '' } = {}) {
+  const t = lib?.tracksById[trackId];
+  if (!t) return;
+  const liked = isLiked(t.key);
+  const item = (act, icon, label, extra = '') => `<button class="menu-item" type="button" data-song="${act}" ${extra}>${icon}<span>${label}</span></button>`;
+  const html = `
+    <div class="info-hero">
+      <span class="art" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></span>
+      <div><b>${esc(t.title)}</b><small>${esc([t.artist, t.album].filter(Boolean).join(' · '))}</small></div>
+    </div>
+    <div class="menu-list" data-track="${esc(t.id)}" data-playlist="${esc(playlistId)}">
+      ${item('like', liked ? ICON.heartFill : ICON.heart, liked ? 'Remove from Liked songs' : 'Add to Liked songs')}
+      ${item('next', ICON.playNext, 'Play next')}
+      ${item('queue', ICON.queue, 'Add to queue')}
+      ${item('playlist', ICON.plus, 'Add to playlist…')}
+      ${playlistId && playlistId !== 'liked' ? item('unlist', ICON.close, 'Remove from this playlist') : ''}
+      ${item('album', ICON.album, 'Go to album')}
+      ${t.albumArtist || t.artist ? item('artist', ICON.mic, 'Go to artist') : ''}
+      ${item('fix', ICON.wand, 'Fix info & cover')}
+      ${item('edit', ICON.pencil, 'Edit info')}
+      ${item('info', ICON.info, 'Song info & audio analysis')}
+    </div>`;
+  openSheet('menu', 'Song', html, !sheetKind);
+}
+
+function openPlaylistPicker(trackIds) {
+  const keys = trackIds.map((id) => lib.tracksById[id]?.key).filter(Boolean);
+  const html = `
+    <form class="set-inline" data-form="new-playlist">
+      <input id="new-playlist" class="set-input" type="text" placeholder="New playlist name" autocomplete="off">
+      <button class="pill-btn small light" type="submit">Create</button>
+    </form>
+    <div class="menu-list" data-keys="${esc(keys.join('\n'))}">
+      ${playlists().map((p) => `<button class="menu-item" type="button" data-pick-playlist="${esc(p.id)}">${ICON.queue}<span>${esc(p.name)}</span><small>${plural(p.keys.length, 'song')}</small></button>`).join('')
+        || '<p class="info-note">No playlists yet. Create one above.</p>'}
+    </div>`;
+  openSheet('pick-playlist', 'Add to playlist', html, false);
+}
+
+function onMenuEvent(e) {
+  if (sheetKind === 'pick-playlist') {
+    const keys = ($('#sheet-body .menu-list')?.dataset.keys || '').split('\n').filter(Boolean);
+    if (e.type === 'submit' && e.target.closest('[data-form="new-playlist"]')) {
+      e.preventDefault();
+      const name = $('#new-playlist').value.trim();
+      if (!name) return;
+      const pl = createPlaylist(name, keys);
+      closeSheet();
+      toast(`Created "${pl.name}".`);
+      return;
+    }
+    const pick = e.type === 'click' && e.target.closest('[data-pick-playlist]');
+    if (pick) {
+      const added = addToPlaylist(pick.dataset.pickPlaylist, keys);
+      const pl = playlists().find((p) => p.id === pick.dataset.pickPlaylist);
+      closeSheet();
+      toast(added ? `Added to "${pl?.name}".` : `Already in "${pl?.name}".`);
+    }
+    return;
+  }
+  if (sheetKind !== 'menu' || e.type !== 'click') return;
+  const btn = e.target.closest('[data-song]');
+  if (!btn) return;
+  const box = btn.closest('.menu-list');
+  const t = lib?.tracksById[box.dataset.track];
+  if (!t) return;
+  const act = btn.dataset.song;
+  if (act === 'like') { const on = toggleLike(t.key); closeSheet(); toast(on ? 'Added to Liked songs.' : 'Removed from Liked songs.'); }
+  if (act === 'next') { withAuth(() => player.enqueue([t], { next: true })); closeSheet(); toast('Plays next.'); }
+  if (act === 'queue') { withAuth(() => player.enqueue([t])); closeSheet(); toast('Added to the queue.'); }
+  if (act === 'playlist') openPlaylistPicker([t.id]);
+  if (act === 'unlist') { removeFromPlaylist(box.dataset.playlist, t.key); closeSheet(); toast('Removed from the playlist.'); }
+  if (act === 'album') { closeSheet(); setNowOpen(false); setTimeout(() => { location.hash = 'album/' + encodeURIComponent(t.albumKey); }, 60); }
+  if (act === 'artist') { closeSheet(); setNowOpen(false); setTimeout(() => { location.hash = 'artist/' + encodeURIComponent(t.albumArtist || t.artist); }, 60); }
+  if (act === 'fix') openFix(t.id, false);
+  if (act === 'edit') openEdit(t.id, false);
+  if (act === 'info') openTrackInfo(t.id, false);
+}
+
+function likedTracks() {
+  const likes = getRules().likes || {};
+  const byKey = new Map(lib.tracks.map((t) => [t.key, t]));
+  return Object.entries(likes).sort((a, b) => b[1] - a[1]).map(([k]) => byKey.get(k)).filter(Boolean);
+}
+
+function playlistTracks(pl) {
+  const byKey = new Map(lib.tracks.map((t) => [t.key, t]));
+  return pl.keys.map((k) => byKey.get(k)).filter(Boolean);
+}
+
+function renderPlaylists() {
+  const liked = likedTracks();
+  const card = (href, cover, seed, name, sub, cls = '') => `
+    <a class="card ${cls}" href="${href}">
+      <div class="art" data-cover="${esc(cover)}" data-seed="${esc(seed)}"></div>
+      <b>${esc(name)}</b><small>${esc(sub)}</small>
+    </a>`;
+  return `<section class="section"><div class="grid">
+    <a class="card liked-card" href="#playlist/liked"><div class="art liked-art">${ICON.heartFill}</div><b>Liked songs</b><small>${plural(liked.length, 'song')}</small></a>
+    ${playlists().map((p) => { const ts = playlistTracks(p); return card(`#playlist/${encodeURIComponent(p.id)}`, ts[0]?.cover || '', p.name, p.name, plural(ts.length, 'song')); }).join('')}
+    <button class="card new-card" type="button" data-action="new-playlist"><div class="art new-art">${ICON.plus}</div><b>New playlist</b><small>Add songs from any song's ··· menu</small></button>
+  </div></section>`;
+}
+
+function renderPlaylist(id) {
+  const isLikedList = id === 'liked';
+  const pl = isLikedList ? null : playlists().find((p) => p.id === id);
+  if (!isLikedList && !pl) return renderHome('playlists');
+  const tracks = isLikedList ? likedTracks() : playlistTracks(pl);
+  lists.playlist = tracks;
+  const name = isLikedList ? 'Liked songs' : pl.name;
+  const total = tracks.reduce((s, t) => s + (t.duration || 0), 0);
+  return `
+    <div class="page" data-tint="${esc(tracks[0]?.cover || '')}" data-seed="${esc(name)}">
+      <header class="page-hero">
+        <div class="page-top">
+          <button class="round-btn" type="button" data-action="back" aria-label="Back">${ICON.back}</button>
+          ${isLikedList ? '<span></span>' : `<button class="round-btn" type="button" data-action="playlist-menu" data-id="${esc(id)}" aria-label="Playlist options">${ICON.more}</button>`}
+        </div>
+        ${isLikedList ? `<div class="art hero-art liked-art">${ICON.heartFill}</div>` : `<div class="art hero-art" data-cover="${esc(tracks[0]?.cover || '')}" data-seed="${esc(name)}"></div>`}
+        <h1>${esc(name)}</h1>
+        <div class="hero-meta">Playlist · ${plural(tracks.length, 'song')}${total ? ' · ' + fmtTotal(total) : ''}</div>
+        <div class="hero-actions">
+          <button class="round-btn" type="button" data-action="shuffle-list" data-list="playlist" aria-label="Shuffle" ${tracks.length ? '' : 'disabled'}>${ICON.shuffle}</button>
+          <button class="pill-btn" type="button" data-action="play-list" data-list="playlist" ${tracks.length ? '' : 'disabled'}>${ICON.play}<span>Play</span></button>
+        </div>
+      </header>
+      ${tracks.length ? `<section class="section"><div class="rows">${tracks.map((t, i) => songRow(t, 'playlist', i, { showArt: true, playlistId: id })).join('')}</div></section>`
+        : `<div class="empty small"><p>${isLikedList ? 'Tap ♥ on any song to add it here.' : "Add songs from any song's ··· menu."}</p></div>`}
+    </div>`;
+}
+
+function openPlaylistMenu(id) {
+  const pl = playlists().find((p) => p.id === id);
+  if (!pl) return;
+  const html = `
+    <form class="set-inline" data-form="rename-playlist" data-id="${esc(id)}">
+      <input id="rename-playlist" class="set-input" type="text" value="${esc(pl.name)}" autocomplete="off" aria-label="Playlist name">
+      <button class="pill-btn small" type="submit">Rename</button>
+    </form>
+    <div class="menu-list">
+      <button class="menu-item" type="button" data-pl="queue" data-id="${esc(id)}">${ICON.queue}<span>Add all to queue</span></button>
+      <button class="menu-item danger" type="button" data-pl="delete" data-id="${esc(id)}">${ICON.close}<span>Delete playlist</span></button>
+    </div>
+    <p class="info-note">Deleting a playlist doesn't delete any songs.</p>`;
+  openSheet('playlist-menu', pl.name, html);
+}
+
+function onPlaylistMenuEvent(e) {
+  if (sheetKind !== 'playlist-menu') return;
+  if (e.type === 'submit' && e.target.closest('[data-form="rename-playlist"]')) {
+    e.preventDefault();
+    renamePlaylist(e.target.closest('form').dataset.id, $('#rename-playlist').value);
+    closeSheet();
+    toast('Renamed.');
+    return;
+  }
+  const btn = e.type === 'click' && e.target.closest('[data-pl]');
+  if (!btn) return;
+  const pl = playlists().find((p) => p.id === btn.dataset.id);
+  if (btn.dataset.pl === 'queue' && pl) { withAuth(() => player.enqueue(playlistTracks(pl))); closeSheet(); toast('Added to the queue.'); }
+  if (btn.dataset.pl === 'delete' && pl) {
+    if (btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; btn.querySelector('span').textContent = 'Tap again to delete'; return; }
+    deletePlaylist(pl.id);
+    closeSheet();
+    location.hash = 'playlists';
+    toast(`Deleted "${pl.name}".`);
+  }
+}
+
+// ================= history & shelves =================
+const HISTORY_KEY = 'mp.history.v1';
+let recent = []; // song keys, most recently played first
+try { recent = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (e) { recent = []; }
+
+function remember(t) {
+  recent = [t.key, ...recent.filter((k) => k !== t.key)].slice(0, 150);
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(recent)); } catch (e) { /* ignore */ }
+}
+
+function shelvesHtml() {
+  const byKey = new Map(lib.tracks.map((t) => [t.key, t]));
+  const seen = new Set();
+  const recentAlbums = recent.map((k) => byKey.get(k)).filter(Boolean)
+    .map((t) => lib.albumsById[t.albumKey]).filter((a) => a && !seen.has(a.key) && seen.add(a.key)).slice(0, 12);
+  const added = lib.albums.slice().sort((a, b) => {
+    const at = (x) => Math.max(...x.tracks.map((t) => Date.parse(t.modified) || 0));
+    return at(b) - at(a);
+  }).slice(0, 12);
+  const most = lib.tracks.filter((t) => plays[t.key]).sort((a, b) => plays[b.key] - plays[a.key]).slice(0, 12);
+  lists.most = most;
+  const shelf = (title, items) => (items ? `<section class="section shelf-section"><h2 class="section-title">${title}</h2><div class="shelf">${items}</div></section>` : '');
+  return [
+    recentAlbums.length ? shelf('Recently played', recentAlbums.map(albumCard).join('')) : '',
+    most.length >= 3 ? shelf('Most played', most.map((t, i) => `
+      <button class="card" type="button" data-action="play-track" data-list="most" data-i="${i}">
+        <div class="art" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></div>
+        <b>${esc(t.title)}</b><small>${esc(t.artist || t.album)} · ${plural(plays[t.key], 'play')}</small>
+      </button>`).join('')) : '',
+    lib.albums.length > 4 ? shelf('Recently added', added.map(albumCard).join('')) : '',
+  ].join('');
+}
+
+// ================= sleep timer =================
+function openSleep() {
+  const s = player.state;
+  const on = s.sleepAt !== 0;
+  const left = s.sleepAt > 0 ? Math.max(0, Math.ceil((s.sleepAt - Date.now()) / 60e3)) : 0;
+  const opt = (v, label) => `<button class="menu-item" type="button" data-sleep="${v}">${ICON.moon}<span>${label}</span></button>`;
+  const html = `
+    ${on ? `<p class="info-note first">${s.sleepAt === -1 ? 'Stops after this song.' : `Stops in ${plural(left, 'minute')}.`}</p>` : '<p class="info-note first">Music fades out and stops.</p>'}
+    <div class="menu-list">
+      ${[15, 30, 45, 60, 90].map((m) => opt(m, `${m} minutes`)).join('')}
+      ${opt('end', 'End of this song')}
+      ${on ? `<button class="menu-item danger" type="button" data-sleep="0">${ICON.close}<span>Turn off timer</span></button>` : ''}
+    </div>`;
+  openSheet('sleep', 'Sleep timer', html);
+}
+
+function onSleepEvent(e) {
+  if (sheetKind !== 'sleep' || e.type !== 'click') return;
+  const v = e.target.closest('[data-sleep]')?.dataset.sleep;
+  if (v === undefined) return;
+  player.setSleep(v === 'end' ? 'end' : Number(v));
+  closeSheet();
+  toast(v === '0' ? 'Sleep timer off.' : v === 'end' ? 'Stops after this song.' : `Stops in ${v} minutes.`);
+}
+
+function updateSleepButton() {
+  const s = player.state;
+  const btn = $('#c-sleep');
+  btn.classList.toggle('on', s.sleepAt !== 0);
+  const left = s.sleepAt > 0 ? Math.max(0, Math.ceil((s.sleepAt - Date.now()) / 60e3)) : 0;
+  btn.setAttribute('aria-label', s.sleepAt === -1 ? 'Sleep timer: end of song' : s.sleepAt > 0 ? `Sleep timer: ${left} min left` : 'Sleep timer');
+  btn.dataset.left = s.sleepAt > 0 ? String(left) : s.sleepAt === -1 ? '♪' : '';
+}
+
+// ================= audio analysis =================
+const analysisCache = new Map();
+
+async function runAnalysis(t, btn) {
+  const box = $('#analysis');
+  if (!box) return;
+  if (analysisCache.has(t.id)) { box.innerHTML = analysisHtml(analysisCache.get(t.id), t); return; }
+  btn.disabled = true;
+  box.innerHTML = `<div class="analysis-wait">${ICON.spinner}<span>Downloading and decoding the whole song… (${fmtSize(t.size)})</span></div>`;
+  try {
+    const blob = await readBlob({ id: t.id, src: t.src });
+    const res = await analyzeAudio(blob, { sampleRate: t.meta?.sampleRate, lossless: !!t.meta?.lossless });
+    analysisCache.set(t.id, res);
+    if ($('#analysis')) $('#analysis').innerHTML = analysisHtml(res, t);
+  } catch (e) {
+    if ($('#analysis')) $('#analysis').innerHTML = `<p class="info-note">Couldn't analyze this file in this browser: ${esc(e.message || e)}</p>`;
+    btn.disabled = false;
+  }
+}
+
+function analysisHtml(r, t) {
+  const ticks = [];
+  const topK = r.nyquist / 1000;
+  const stepK = topK > 40 ? 20 : topK > 24 ? 10 : 5;
+  for (let k = 0; k <= topK; k += stepK) ticks.push(k);
+  const f1 = (x) => (Number.isFinite(x) ? x.toFixed(1) : '−∞');
+  return `
+    <div class="verdict ${r.level}">${esc(r.verdict)}</div>
+    <div class="spectro">
+      <img src="${r.image}" alt="Spectrogram of ${esc(t.title)}">
+      <div class="spectro-axis">${ticks.reverse().map((k) => `<span style="top:${(1 - (k * 1000) / r.nyquist) * 100}%">${k} kHz</span>`).join('')}</div>
+    </div>
+    <p class="spectro-cap">Time → · brightness = loudness · dashed line = detected cutoff (${(r.cutoffHz / 1000).toFixed(1)} kHz)</p>
+    <dl>
+      ${kv('Frequency cutoff', `${(r.cutoffHz / 1000).toFixed(1)} kHz of ${(r.nyquist / 1000).toFixed(1)} kHz`)}
+      ${kv('Peak', `${f1(r.peakDb)} dBFS`)}
+      ${kv('Average level (RMS)', `${f1(r.rmsDb)} dBFS`)}
+      ${kv('Dynamic range (approx.)', `${f1(r.drDb)} dB${r.drDb < 7 ? ' · heavily compressed' : r.drDb > 12 ? ' · very dynamic' : ''}`)}
+      ${kv('Clipped samples', r.clipped.toLocaleString('en-US'))}
+    </dl>`;
+}
+
 // ================= edit song info (and write it into the file) =================
 const EDIT_FIELDS = [
   ['TITLE', 'Title', 'title'], ['ARTIST', 'Artist', 'artist'], ['ALBUM', 'Album', 'album'],
@@ -1586,6 +1906,13 @@ async function saveTagsToFile(t, fields, coverSource, progress = (msg) => toast(
     throw new Error('Safety check failed, so the file was not changed.');
   }
   await overwriteFile(t, out, (p) => progress(`Saving "${t.title}"… ${Math.round(p * 100)}%`));
+  // The file's size changed, so its key did too: keep likes, playlists and plays.
+  const newKey = trackKeyOf(t.file, out.length);
+  if (newKey !== t.key) {
+    if (plays[t.key]) { plays[newKey] = plays[t.key]; delete plays[t.key]; try { localStorage.setItem(PLAYS_KEY, JSON.stringify(plays)); } catch (e) { /* ignore */ } }
+    recent = recent.map((k) => (k === t.key ? newKey : k));
+    rekeyTrack(t.key, newKey);
+  }
   return out.length;
 }
 
@@ -1694,6 +2021,7 @@ function countPlay(t, time) {
   if (!t || countedId === t.id || time < 30) return;
   countedId = t.id;
   plays[t.key] = (plays[t.key] || 0) + 1;
+  remember(t);
   try { localStorage.setItem(PLAYS_KEY, JSON.stringify(plays)); } catch (e) { /* ignore */ }
 }
 
@@ -2039,6 +2367,7 @@ let rulesTimer = 0;
 onRulesChange(() => {
   rebuild();
   render();
+  updateLikeButton();
   clearTimeout(rulesTimer);
   rulesTimer = setTimeout(pushRules, 1500);
 });
@@ -2074,6 +2403,8 @@ function wireStaticUi() {
     if (!el) return;
     const action = el.dataset.action;
     if (action === 'track-info') { e.stopPropagation(); openTrackInfo(el.dataset.id); return; }
+    if (action === 'dequeue') { e.stopPropagation(); player.removeAt(Number(el.dataset.pos)); return; }
+    if (action === 'song-menu') { e.stopPropagation(); openSongMenu(el.dataset.id, { playlistId: el.dataset.playlist || '' }); return; }
     if (action === 'fix-track') { e.stopPropagation(); openFix(el.dataset.id, !sheetKind); return; }
     if (action === 'edit-track') { e.stopPropagation(); openEdit(el.dataset.id, !sheetKind); return; }
     const list = lists[el.dataset.list] || [];
@@ -2086,11 +2417,16 @@ function wireStaticUi() {
     else if (action === 'allow-local') allowLocal(el.dataset.src);
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
+    else if (action === 'new-playlist') { openPlaylistPicker([]); $('#sheet-title').textContent = 'New playlist'; }
+    else if (action === 'playlist-menu') openPlaylistMenu(el.dataset.id);
+    else if (action === 'analyze') { const t = lib.tracksById[el.dataset.id]; if (t) runAnalysis(t, el); }
     else if (action === 'artist-bio') { artistsTried.delete(el.dataset.name); loadArtistInfo(el.dataset.name, true); }
     else if (action === 'bio-more') { $('#about-bio')?.classList.toggle('open'); el.textContent = $('#about-bio')?.classList.contains('open') ? 'Show less' : 'Read more'; }
     else if (action === 'organize') openOrganize();
     else if (action === 'upload') openUpload(el.dataset.folder || undefined);
     else if (action === 'jump') withAuth(() => player.jumpTo(Number(el.dataset.pos)));
+    else if (action === 'dequeue') { e.stopPropagation(); player.removeAt(Number(el.dataset.pos)); }
+    else if (action === 'clear-queue') player.clearUpNext();
     else if (action === 'save-lyrics') saveCurrentLyrics(el);
   };
   $('#main').addEventListener('click', onAction);
@@ -2103,6 +2439,11 @@ function wireStaticUi() {
   body.addEventListener('click', onOrganizeEvent);
   body.addEventListener('click', onFixEvent);
   body.addEventListener('click', onEditEvent);
+  body.addEventListener('click', onMenuEvent);
+  body.addEventListener('submit', onMenuEvent);
+  body.addEventListener('click', onPlaylistMenuEvent);
+  body.addEventListener('submit', onPlaylistMenuEvent);
+  body.addEventListener('click', onSleepEvent);
   body.addEventListener('submit', onEditEvent);
   body.addEventListener('submit', onFixEvent);
   body.addEventListener('change', onOrganizeEvent);
@@ -2150,8 +2491,16 @@ function wireStaticUi() {
   $('#np-more').innerHTML = ICON.more;
   $('#np-info').innerHTML = ICON.info;
   const infoCurrent = () => { const t = player.current(); if (t) openTrackInfo(t.id); };
-  $('#np-more').addEventListener('click', infoCurrent);
+  $('#np-more').addEventListener('click', () => { const t = player.current(); if (t) openSongMenu(t.id); });
   $('#np-info').addEventListener('click', infoCurrent);
+  $('#np-like').addEventListener('click', () => {
+    const t = player.current();
+    if (!t) return;
+    const on = toggleLike(t.key);
+    toast(on ? 'Added to Liked songs.' : 'Removed from Liked songs.');
+  });
+  $('#c-sleep').innerHTML = ICON.moon;
+  $('#c-sleep').addEventListener('click', openSleep);
   $('#np-artist').addEventListener('click', () => {
     const t = player.current();
     const name = t?.albumArtist || t?.artist;
@@ -2192,6 +2541,7 @@ function wireStaticUi() {
   vol.value = settings.volume;
   player.setVolume(settings.volume / 100);
   player.setReplayGain(settings.replayGain);
+  player.setCrossfade(settings.crossfade);
   vol.style.setProperty('--pct', settings.volume + '%');
   vol.addEventListener('input', () => {
     player.setVolume(vol.value / 100);
@@ -2281,7 +2631,7 @@ document.addEventListener('pointerdown', (e) => {
 }, { capture: true, passive: true });
 
 // Read-only handle for debugging in the browser console.
-window.n4cuply = { get lib() { return lib; }, scans, srcState };
+window.n4cuply = { get lib() { return lib; }, scans, srcState, player };
 
 player.on('change', updatePlayerUi);
 player.on('state', () => { updatePlayState(); if (player.state.playing) progressLoop(); });
@@ -2297,5 +2647,7 @@ player.on('auth', (e) => {
   }
 });
 player.on('error', (e) => toast(e.detail));
+player.on('sleep', updateSleepButton);
+player.on('sleep-done', () => { updateSleepButton(); toast('Sleep timer: music stopped. Good night.'); });
 
 boot();

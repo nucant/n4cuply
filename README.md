@@ -12,6 +12,14 @@ A private music player for your own songs. Your music stays in a private Google 
 - Multiple sources: the default Drive folder plus up to 5 more (other folders, other Google accounts, or folders on your PC)
 - PC folders (Chrome/Edge on a computer) are picked once and remembered; the same song in Drive and on the PC shows once and plays from the PC
 - Settings: sources, ReplayGain volume normalization, display options, storage, accounts, log out
+- Liked songs and playlists (synced to your other devices through your Drive)
+- Song menu: play next, add to queue, add to playlist, go to album/artist, fix, edit, info
+- Crossfade (0–12 s) with gapless hand-over between songs, and a sleep timer that fades out
+- Home shelves: recently played, most played, recently added
+- Fix info & cover (✨) from Apple iTunes, manual Edit info, and saving tags + cover into FLAC/MP3 files (audio untouched, verified before saving)
+- Organize: merge duplicate artists and split albums, find missing covers and lyrics
+- Artist profiles with photo and bio from Wikipedia
+- Audio analysis: spectrogram, lossless check (spots FLACs made from MP3s and fake Hi-Res), peak, loudness, dynamic range, clipping
 - Installable on your phone's home screen
 
 Supported audio: FLAC, MP3, M4A (AAC/ALAC), WAV, OGG Vorbis, Opus.
@@ -57,4 +65,9 @@ Uploading asks once for permission to add files to your Drive; normal playback o
 | `js/covers.js` | Cover loading and color extraction |
 | `js/player.js` | Playback, queue, shuffle, repeat, lock screen |
 | `js/settings.js`, `js/store.js` | Settings and on-device cache |
+| `js/organize.js` | Library clean-up rules, likes and playlists (synced as n4cuply-library.json) |
+| `js/online.js` | Optional lookups: iTunes (info, covers), LRCLIB (lyrics) |
+| `js/artists.js` | Artist photos and bios from Wikipedia |
+| `js/tagwrite.js` | Writing tags and covers into FLAC and MP3 files |
+| `js/analyze.js` | Spectrogram and lossless check |
 | `sw.js` | Streaming with seek support, offline app shell |

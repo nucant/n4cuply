@@ -11,6 +11,7 @@ const DEFAULTS = {
   onlineLookup: false,   // LRCLIB lyrics / iTunes covers / Wikipedia artists
   writeTags: true,       // write edits into FLAC / MP3 files
   artistInfo: true,      // artist photos + bios from Wikipedia
+  crossfade: 0,          // seconds between songs (0 = gapless hand-over)
   volume: 100,
 };
 

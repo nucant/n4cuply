@@ -58,7 +58,7 @@ function lev(a, b) {
 
 // ---------------------------------------------------------------- rules
 function emptyRules() {
-  return { v: 1, updatedAt: 0, artists: {}, albums: {}, covers: {}, tracks: {}, ignored: [] };
+  return { v: 1, updatedAt: 0, artists: {}, albums: {}, covers: {}, tracks: {}, ignored: [], likes: {}, playlists: [] };
 }
 
 let rules = loadRules();
@@ -143,6 +143,62 @@ export function clearTrackFix(key) {
 }
 
 export const trackFix = (key) => rules.tracks[key] || null;
+
+// ---------------------------------------------------------------- likes & playlists
+export const isLiked = (key) => !!rules.likes?.[key];
+
+export function toggleLike(key) {
+  rules.likes = rules.likes || {};
+  if (rules.likes[key]) delete rules.likes[key];
+  else rules.likes[key] = Date.now();
+  touch();
+  return !!rules.likes[key];
+}
+
+export const playlists = () => rules.playlists || [];
+
+export function createPlaylist(name, keys = []) {
+  const pl = { id: 'p' + Date.now().toString(36), name: name.trim() || 'New playlist', keys: [...new Set(keys)], at: Date.now() };
+  rules.playlists = [...playlists(), pl];
+  touch();
+  return pl;
+}
+
+export function addToPlaylist(id, keys) {
+  const pl = playlists().find((p) => p.id === id);
+  if (!pl) return 0;
+  const before = pl.keys.length;
+  pl.keys = [...new Set([...pl.keys, ...keys])];
+  pl.at = Date.now();
+  touch();
+  return pl.keys.length - before;
+}
+
+export function removeFromPlaylist(id, key) {
+  const pl = playlists().find((p) => p.id === id);
+  if (!pl) return;
+  pl.keys = pl.keys.filter((k) => k !== key);
+  touch();
+}
+
+export function renamePlaylist(id, name) {
+  const pl = playlists().find((p) => p.id === id);
+  if (pl && name.trim()) { pl.name = name.trim(); touch(); }
+}
+
+export function deletePlaylist(id) {
+  rules.playlists = playlists().filter((p) => p.id !== id);
+  touch();
+}
+
+/** A song's key changed (its file size changed after editing): move likes and playlist entries. */
+export function rekeyTrack(oldKey, newKey) {
+  if (oldKey === newKey) return;
+  if (rules.likes?.[oldKey]) { rules.likes[newKey] = rules.likes[oldKey]; delete rules.likes[oldKey]; }
+  for (const pl of playlists()) pl.keys = pl.keys.map((k) => (k === oldKey ? newKey : k));
+  delete rules.tracks[oldKey];
+  touch();
+}
 
 export function ignore(id) {
   if (!rules.ignored.includes(id)) rules.ignored.push(id);
