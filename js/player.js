@@ -64,9 +64,9 @@ function useGainNodes() {
     ctx = new Ctx();
     analyserNode = ctx.createAnalyser();
     analyserNode.fftSize = 512;
-    analyserNode.smoothingTimeConstant = 0.78;
+    analyserNode.smoothingTimeConstant = 0.6;
     analyserNode.minDecibels = -92;
-    analyserNode.maxDecibels = -18; // headroom so loud masters don't pin every bar
+    analyserNode.maxDecibels = -12; // headroom so loud masters don't pin every bar
     analyserNode.connect(ctx.destination);
     decks.forEach((d, i) => {
       const g = ctx.createGain();

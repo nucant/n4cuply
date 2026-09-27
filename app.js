@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.4'; // keep in sync with version.json
+const APP_VERSION = '2.7'; // keep in sync with version.json
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -264,52 +264,131 @@ function sigCell(label, value) {
   return value ? `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>` : '';
 }
 
-// Live spectrum on the dashboard (real audio where allowed, a gentle animation otherwise).
+// Live spectrum on the dashboard: a mirrored neon "mountain" (bass in the
+// middle, treble to the edges). Bars ride on springs so they bounce, peak dots
+// fly up and fall with gravity, and a halo behind pulses with the bass.
+// Real audio where allowed; a gentle animation otherwise (iPhone).
 let vizFrame = 0;
-let vizFake = null;
+const VIZ_N = 34; // bars per side
+const vizState = {
+  level: new Float32Array(VIZ_N), vel: new Float32Array(VIZ_N),
+  peak: new Float32Array(VIZ_N), peakVel: new Float32Array(VIZ_N),
+  fake: Float32Array.from({ length: VIZ_N }, () => Math.random()), bass: 0,
+};
+
 function drawViz() {
   cancelAnimationFrame(vizFrame);
   const canvas = document.getElementById('dash-viz');
   if (!canvas) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = canvas.clientWidth || 560;
+  const H = canvas.clientHeight || 120;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
   const g = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
-  const bars = 40;
+  g.scale(dpr, dpr);
+  const base = H * 0.74;
   const an = player.getAnalyser();
   const data = an ? new Uint8Array(an.frequencyBinCount) : null;
-  if (!vizFake) vizFake = Array.from({ length: bars }, () => Math.random());
-  const grad = g.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0, '#4d8dff');
-  grad.addColorStop(0.55, '#6f6bff');
-  grad.addColorStop(1, '#22d3ee');
+  const grad = g.createLinearGradient(0, base, 0, 0);
+  grad.addColorStop(0, '#00f0ff');
+  grad.addColorStop(0.4, '#3d7bff');
+  grad.addColorStop(0.75, '#8b5cf6');
+  grad.addColorStop(1, '#ff4fd8');
+  const refl = g.createLinearGradient(0, base, 0, H);
+  refl.addColorStop(0, 'rgba(0, 240, 255, .35)');
+  refl.addColorStop(1, 'rgba(0, 240, 255, 0)');
+  const S = vizState;
+  const step = W / (VIZ_N * 2);
+  const bw = Math.max(2, step * 0.58);
+  const cx = W / 2;
+  const xs = (i) => [cx + i * step + (step - bw) / 2, cx - (i + 1) * step + (step - bw) / 2];
+
   const tick = () => {
     if (!canvas.isConnected) return;
-    g.clearRect(0, 0, W, H);
     const playing = !player.audio.paused;
-    const gap = 4;
-    const bw = (W - gap * (bars - 1)) / bars;
     if (an && data) an.getByteFrequencyData(data);
-    for (let i = 0; i < bars; i++) {
+    const t = performance.now() / 1000;
+    let bass = 0;
+    for (let i = 0; i < VIZ_N; i++) {
       let v;
       if (an && data) {
-        // Log-spaced bins so bass doesn't swamp the picture.
-        const lo = Math.floor(Math.pow(data.length * 0.9, i / bars));
-        const hi = Math.max(lo + 1, Math.floor(Math.pow(data.length * 0.9, (i + 1) / bars)));
+        const lo = Math.floor(Math.pow(data.length * 0.85, i / VIZ_N));
+        const hi = Math.max(lo + 1, Math.floor(Math.pow(data.length * 0.85, (i + 1) / VIZ_N)));
         let sum = 0;
         for (let k = lo; k < hi; k++) sum += data[k];
-        v = sum / (hi - lo) / 255;
+        v = Math.pow(sum / (hi - lo) / 255, 1.7); // spread loud levels so tops don't flatten
+      } else if (playing) {
+        S.fake[i] = Math.min(1, Math.max(0.1, S.fake[i] + (Math.random() - 0.5) * 0.3));
+        const beat = Math.max(0, Math.sin(t * 7.2)) ** 6; // a thump roughly every beat
+        v = Math.pow(1 - i / VIZ_N, 1.1) * (0.3 + 0.55 * S.fake[i] + 0.35 * beat * (1 - i / VIZ_N));
       } else {
-        vizFake[i] += (Math.random() - 0.5) * 0.18;
-        vizFake[i] = Math.min(1, Math.max(0.08, vizFake[i]));
-        v = playing ? vizFake[i] * (0.55 + 0.45 * Math.sin(performance.now() / 380 + i * 0.5) ** 2) : 0.06;
+        v = 0.02 * (1 - i / VIZ_N);
       }
-      const h = Math.max(3, v * H);
-      g.fillStyle = grad;
-      g.beginPath();
-      if (g.roundRect) g.roundRect(i * (bw + gap), H - h, bw, h, Math.min(3, bw / 2));
-      else g.rect(i * (bw + gap), H - h, bw, h);
-      g.fill();
+      v = Math.min(1, v);
+      // Spring: overshoots and settles, which reads as bounce.
+      S.vel[i] += (v - S.level[i]) * 0.32;
+      S.vel[i] *= 0.68;
+      S.level[i] = Math.max(0, Math.min(1.08, S.level[i] + S.vel[i]));
+      // Peak dot: kicked up by the bar, then falls with gravity.
+      if (S.level[i] >= S.peak[i]) { S.peak[i] = S.level[i]; S.peakVel[i] = Math.max(S.peakVel[i], S.vel[i] * 0.9); }
+      S.peakVel[i] -= 0.0035;
+      S.peak[i] = Math.max(S.level[i], S.peak[i] + S.peakVel[i]);
+      if (S.peak[i] === S.level[i] && S.peakVel[i] < 0) S.peakVel[i] = 0;
+      if (i < 5) bass += S.level[i] / 5;
     }
+    S.bass += (bass - S.bass) * 0.3;
+
+    g.clearRect(0, 0, W, H);
+    // Bass halo behind the mountain.
+    const halo = g.createRadialGradient(cx, base, 4, cx, base, W * (0.25 + S.bass * 0.35));
+    halo.addColorStop(0, `rgba(80, 140, 255, ${0.28 + S.bass * 0.45})`);
+    halo.addColorStop(0.5, `rgba(139, 92, 246, ${0.12 + S.bass * 0.2})`);
+    halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    g.fillStyle = halo;
+    g.fillRect(0, 0, W, H);
+
+    g.globalCompositeOperation = 'lighter'; // neon: overlapping glow adds up
+    g.fillStyle = grad;
+    g.shadowColor = 'rgba(61, 123, 255, .95)';
+    g.shadowBlur = 16 + S.bass * 14;
+    for (let i = 0; i < VIZ_N; i++) {
+      const h = Math.max(2, S.level[i] * base * 0.92);
+      for (const x of xs(i)) {
+        g.beginPath();
+        if (g.roundRect) g.roundRect(x, base - h, bw, h, bw / 2); else g.rect(x, base - h, bw, h);
+        g.fill();
+      }
+    }
+    // Peak dots.
+    g.shadowColor = 'rgba(0, 240, 255, 1)';
+    g.shadowBlur = 12;
+    g.fillStyle = '#d8fbff';
+    for (let i = 0; i < VIZ_N; i++) {
+      if (S.peak[i] < 0.03) continue;
+      const y = base - S.peak[i] * base * 0.92 - 6;
+      for (const x of xs(i)) {
+        g.beginPath();
+        g.arc(x + bw / 2, y, Math.max(1.4, bw * 0.36), 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    g.shadowBlur = 0;
+    // Reflection and floor.
+    g.fillStyle = refl;
+    for (let i = 0; i < VIZ_N; i++) {
+      const h = Math.min(H - base, S.level[i] * (H - base) * 1.15);
+      for (const x of xs(i)) g.fillRect(x, base + 2, bw, h);
+    }
+    g.globalCompositeOperation = 'source-over';
+    const line = g.createLinearGradient(0, 0, W, 0);
+    line.addColorStop(0, 'rgba(0,240,255,0)');
+    line.addColorStop(0.5, `rgba(160,230,255,${0.6 + S.bass * 0.4})`);
+    line.addColorStop(1, 'rgba(0,240,255,0)');
+    g.fillStyle = line;
+    g.fillRect(0, base, W, 1.6);
+    // The whole visualizer breathes with the bass.
+    canvas.style.transform = `scale(${1 + S.bass * 0.035})`;
     vizFrame = requestAnimationFrame(tick);
   };
   tick();
@@ -540,6 +619,35 @@ function updateSearchResults() {
   markPlaying();
 }
 
+// ================= splash & page entrance =================
+const splashShownAt = performance.now();
+let splashGone = false;
+
+/** Fades the Walkman splash out once the first screen is ready (shown at least ~1.2 s). */
+function hideSplash() {
+  if (splashGone) return;
+  splashGone = true;
+  const wait = Math.max(0, 1200 - (performance.now() - splashShownAt));
+  setTimeout(() => {
+    const el = $('#splash');
+    document.body.classList.remove('booting');
+    if (!el) return;
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 700);
+  }, wait);
+}
+setTimeout(hideSplash, 8000); // never get stuck on the splash
+
+/** Plays the entrance animation for a freshly opened page. */
+function enterPage() {
+  const main = $('#main');
+  main.classList.remove('enter');
+  void main.offsetWidth;
+  main.classList.add('enter');
+  clearTimeout(enterPage.t);
+  enterPage.t = setTimeout(() => main.classList.remove('enter'), 900);
+}
+
 // ================= boot =================
 async function boot() {
   registerServiceWorker();
@@ -629,6 +737,7 @@ async function checkForUpdate() {
 
 // ================= screens =================
 function showLogin(error = '') {
+  hideSplash();
   $('#app').hidden = true;
   $('#now').hidden = true;
   $('#login').hidden = false;
@@ -642,6 +751,8 @@ function showApp() {
   $('#app').hidden = false;
   applyLayout();
   render();
+  enterPage();
+  hideSplash();
 }
 
 async function connect() {
@@ -809,6 +920,7 @@ window.addEventListener('hashchange', () => {
   closeSheet(false);
   const go = () => {
     render();
+    enterPage();
     window.scrollTo(0, scrollMemory.get(location.hash) || 0);
     if (route().name === 'search' && document.body.classList.contains('has-rail')) $('#sq')?.focus();
   };
@@ -866,6 +978,10 @@ function render() {
   if (!setMain(html)) { markPlaying(); if (sel.on) markSelected(); return; }
   hydrateArt(main);
   if (document.getElementById('dash-viz')) drawViz();
+  if (justChanged) {
+    justChanged = false;
+    main.querySelectorAll('.dash-now-top, .dash-signal, .dash-visual-art').forEach((el) => el.classList.add('swap-in'));
+  }
   if (sel.on) markSelected();
   const page = main.querySelector('[data-tint]');
   if (page) tintFromCover(page, page.dataset.tint, page.dataset.seed);
@@ -1169,16 +1285,21 @@ function paintArt(el, seed, coverId) {
     return Promise.resolve(ready);
   }
   el.classList.remove('instant');
-  el.style.backgroundImage = '';
-  el.classList.remove('has-img');
-  el.innerHTML = `<span>${esc(initials(seed))}</span>`;
+  const keep = el.dataset.keep === '1' && el.classList.contains('has-img') && coverId;
+  delete el.dataset.keep;
+  if (!keep) {
+    el.style.backgroundImage = '';
+    el.classList.remove('has-img');
+    el.innerHTML = `<span>${esc(initials(seed))}</span>`;
+  }
   el.dataset.want = coverId || '';
   if (!coverId) return Promise.resolve(null);
   return loadCover(coverId, getTrack).then((c) => {
     if (c && el.dataset.want === coverId) {
+      if (keep) fadeOutOldArt(el);
       el.style.backgroundImage = `url("${c.url}")`;
       el.classList.add('has-img');
-      el.innerHTML = '';
+      el.querySelectorAll(':scope > span:not(.art-ghost)').forEach((x) => x.remove());
     }
     return c;
   });
@@ -1216,8 +1337,43 @@ function tintFromCover(el, coverId, seed) {
 let currentLyrics = null;
 let lyricsTrackId = '';
 
+/** Crossfades an artwork element: the old picture fades out over the new one. */
+function fadeOutOldArt(el) {
+  if (!el || !el.classList.contains('has-img') || !el.style.backgroundImage) return;
+  const ghost = document.createElement('span');
+  ghost.className = 'art-ghost';
+  ghost.style.backgroundImage = el.style.backgroundImage;
+  el.appendChild(ghost);
+  requestAnimationFrame(() => { ghost.style.opacity = '0'; });
+  setTimeout(() => ghost.remove(), 650);
+}
+
+function swapIn(...els) {
+  for (const el of els) {
+    if (!el) continue;
+    el.classList.remove('swap-in');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('swap-in');
+  }
+}
+
+let uiTrackId = '';
+let justChanged = false;
+
 function updatePlayerUi() {
   const t = player.current();
+  const changed = !!t && t.id !== uiTrackId;
+  if (changed && uiTrackId) {
+    justChanged = true;
+    const npArt = $('#np-art');
+    const miniArt = $('#mini-art');
+    fadeOutOldArt(npArt);
+    fadeOutOldArt(miniArt);
+    // Keep the old picture visible until the new one is ready, so nothing flashes.
+    for (const el of [npArt, miniArt]) if (el) el.dataset.keep = '1';
+    swapIn($('.np-titles'), $('.mini-text'), $('#np-tech'), $('#np-lyric'));
+  }
+  if (t) uiTrackId = t.id;
   $('#mini').hidden = !t;
   document.body.classList.toggle('has-mini', !!t);
   if (!t) return;
@@ -1259,13 +1415,14 @@ function updatePlayerUi() {
     // New cover: seed colour first, the real colour once the image loads.
     $('#now').dataset.cover = t.cover || seed;
     for (const el of tinted) tint(el, null, hash(seed) % 360);
-    $('#np-bg-img').style.backgroundImage = '';
+    $('#np-bg-img').classList.add('fading');
   }
   paintArt($('#mini-art'), seed, t.cover);
   paintArt($('#np-art'), seed, t.cover).then((c) => {
     if (!c || player.current()?.id !== t.id) return;
     player.setArtwork(t.id, c.url);
     $('#np-bg-img').style.backgroundImage = settings.dynamicColor ? `url("${c.url}")` : '';
+    requestAnimationFrame(() => $('#np-bg-img').classList.remove('fading'));
     if (c.color) for (const el of tinted) tint(el, c.color);
   });
 
