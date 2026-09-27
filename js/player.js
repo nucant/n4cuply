@@ -50,12 +50,57 @@ function gainFactor(track) {
   return Number.isFinite(db) ? Math.min(1, 10 ** (db / 20)) : 1;
 }
 
+// Volume goes through Web Audio gain nodes when fading or normalizing is on:
+// iPhone Safari ignores <audio>.volume, so element volume can't fade there.
+let ctx = null;
+const gains = [null, null];
+
+function useGainNodes() {
+  if (ctx) return true;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return false;
+  try {
+    ctx = new Ctx();
+    decks.forEach((d, i) => {
+      const g = ctx.createGain();
+      ctx.createMediaElementSource(d).connect(g).connect(ctx.destination);
+      gains[i] = g;
+    });
+    return true;
+  } catch (e) {
+    ctx = null;
+    return false;
+  }
+}
+
+function needGainNodes() {
+  return state.crossfade > 0 || replayGain !== 'off';
+}
+
+/** Browsers start audio contexts suspended until a tap; call from play actions. */
+function wakeAudio() {
+  if (needGainNodes()) useGainNodes();
+  if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+}
+
+function setDeckVolume(i, v) {
+  const vol = Math.max(0, Math.min(1, v));
+  if (gains[i]) {
+    gains[i].gain.value = vol;
+    decks[i].volume = 1;
+  } else {
+    decks[i].volume = vol;
+  }
+}
+
+const deckVolume = (i) => (gains[i] ? gains[i].gain.value : decks[i].volume);
+
 const volumeFor = (track) => Math.max(0, Math.min(1, userVolume * gainFactor(track)));
 let sleepFade = 1; // 1..0 while the sleep timer fades out
 
 function applyVolume() {
   if (fade) return; // the fade sets volumes itself
-  A().volume = volumeFor(current()) * sleepFade;
+  setDeckVolume(active, volumeFor(current()) * sleepFade);
 }
 
 // ---------- helpers ----------
@@ -217,7 +262,7 @@ async function prepareNext() {
       blobUrls[deck] = URL.createObjectURL(blob);
       decks[deck].src = blobUrls[deck];
     }
-    decks[deck].volume = 0;
+    setDeckVolume(deck, 0);
     decks[deck].load();
   } catch (e) {
     if (upcoming === mine) upcoming = null;
@@ -234,7 +279,7 @@ async function prepareFallback(up) {
     if (blobUrls[up.deck]) URL.revokeObjectURL(blobUrls[up.deck]);
     blobUrls[up.deck] = URL.createObjectURL(blob);
     decks[up.deck].src = blobUrls[up.deck];
-    decks[up.deck].volume = 0;
+    setDeckVolume(up.deck, 0);
   } catch (e) {
     up.failed = true;
   }
@@ -270,19 +315,21 @@ function handOver() {
 }
 
 function startFade(seconds) {
-  const incoming = decks[upcoming.deck];
+  const inDeck = upcoming.deck;
+  const outDeck = active;
+  const incoming = decks[inDeck];
   const ms = Math.max(200, seconds * 1000);
-  const fromVol = A().volume;
+  const fromVol = deckVolume(outDeck);
   const toVol = volumeFor(upcoming.track) * sleepFade;
-  incoming.volume = 0;
+  setDeckVolume(inDeck, 0);
   incoming.play().catch(() => {});
   fade = {
     start: performance.now(),
     timer: setInterval(() => {
       const k = Math.min(1, (performance.now() - fade.start) / ms);
       // Equal-power curve: no loudness dip in the middle.
-      A().volume = fromVol * Math.cos(k * Math.PI / 2);
-      incoming.volume = toVol * Math.sin(k * Math.PI / 2);
+      setDeckVolume(outDeck, fromVol * Math.cos(k * Math.PI / 2));
+      setDeckVolume(inDeck, toVol * Math.sin(k * Math.PI / 2));
       if (k >= 1) handOver();
     }, 40),
   };
@@ -363,7 +410,7 @@ function onEnded() {
   if (upcoming?.ready && !fade) {
     // Gapless-ish: the next song is already loaded; start it right away.
     const incoming = decks[upcoming.deck];
-    incoming.volume = volumeFor(upcoming.track) * sleepFade;
+    setDeckVolume(upcoming.deck, volumeFor(upcoming.track) * sleepFade);
     incoming.play().catch(onPlayRejected);
     handOver();
     return;
@@ -375,6 +422,7 @@ function onEnded() {
 // ---------- public controls ----------
 function playList(tracks, index = 0, opts = {}) {
   if (!tracks.length) return;
+  wakeAudio();
   state.queue = tracks.slice();
   if (typeof opts.shuffle === 'boolean') state.shuffle = opts.shuffle;
   const start = opts.shuffle && opts.randomStart ? Math.floor(Math.random() * tracks.length) : index;
@@ -384,6 +432,7 @@ function playList(tracks, index = 0, opts = {}) {
 
 function jumpTo(pos) {
   if (pos < 0 || pos >= state.order.length) return;
+  wakeAudio();
   state.pos = pos;
   load(true);
 }
@@ -391,6 +440,7 @@ function jumpTo(pos) {
 function toggle() {
   const track = current();
   if (!track) return;
+  wakeAudio();
   if (!A().src || state.needsAuth) {
     load(true, resumeAt || savedTime);
     return;
@@ -404,6 +454,7 @@ function toggle() {
 
 function next(auto = false) {
   if (!state.order.length) return;
+  if (!auto) wakeAudio();
   if (state.pos < state.order.length - 1) {
     state.pos += 1;
     load(true);
@@ -487,6 +538,7 @@ function clearUpNext() {
 function setCrossfade(seconds) {
   state.crossfade = Math.max(0, Math.min(12, Number(seconds) || 0));
   cancelNext();
+  if (state.crossfade > 0 && A().src) { wakeAudio(); applyVolume(); }
 }
 
 // ---------- sleep timer ----------
@@ -620,6 +672,7 @@ function setVolume(v) {
 
 function setReplayGain(mode) {
   replayGain = mode;
+  if (mode !== 'off' && A().src) wakeAudio();
   applyVolume();
 }
 

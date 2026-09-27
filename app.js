@@ -1205,7 +1205,7 @@ async function openSettings(push = true) {
         </div>
       </div>
       <div class="set-row col">
-        <span><b>Crossfade</b><small>Blend the end of each song into the next. Off still starts the next song without a gap.</small></span>
+        <span><b>Crossfade</b><small>Blend the end of each song into the next. Off still starts the next song without a gap. On iPhone, if music stops when the screen locks, set this to Off.</small></span>
         <div class="seg small" role="radiogroup" aria-label="Crossfade">
           ${[0, 3, 6, 9, 12].map((v) => `<button type="button" role="radio" aria-checked="${settings.crossfade === v}" class="${settings.crossfade === v ? 'on' : ''}" data-xf="${v}">${v ? v + ' s' : 'Off'}</button>`).join('')}
         </div>
@@ -2629,6 +2629,67 @@ document.addEventListener('pointerdown', (e) => {
     }
   }).catch(() => {});
 }, { capture: true, passive: true });
+
+// Swipe down to close Now Playing and bottom sheets (phones).
+function swipeToClose(el, { canStart, onClose }) {
+  let y0 = 0;
+  let x0 = 0;
+  let t0 = 0;
+  let dy = 0;
+  let mode = ''; // '' undecided, 'drag', 'ignore'
+  const reset = () => {
+    el.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1), opacity .25s ease';
+    el.style.transform = '';
+    el.style.opacity = '';
+    setTimeout(() => { el.style.transition = ''; }, 260);
+  };
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || e.target.closest('input[type=range], .np-volume, .spectro, .shelf')) { mode = 'ignore'; return; }
+    y0 = e.touches[0].clientY;
+    x0 = e.touches[0].clientX;
+    t0 = performance.now();
+    dy = 0;
+    mode = canStart(e) ? '' : 'ignore';
+  }, { passive: true });
+  el.addEventListener('touchmove', (e) => {
+    if (mode === 'ignore') return;
+    const y = e.touches[0].clientY - y0;
+    const x = e.touches[0].clientX - x0;
+    if (!mode) {
+      if (Math.abs(y) < 8 && Math.abs(x) < 8) return;
+      mode = y > 0 && y > Math.abs(x) * 1.2 ? 'drag' : 'ignore';
+      if (mode !== 'drag') return;
+    }
+    dy = Math.max(0, y);
+    e.preventDefault();
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${dy}px)`;
+    el.style.opacity = String(Math.max(0.35, 1 - dy / (window.innerHeight * 1.2)));
+  }, { passive: false });
+  el.addEventListener('touchend', () => {
+    if (mode !== 'drag') { mode = ''; return; }
+    mode = '';
+    const speed = dy / Math.max(1, performance.now() - t0);
+    if (dy > 120 || (dy > 40 && speed > 0.6)) {
+      el.style.transition = 'transform .22s ease-in, opacity .22s ease-in';
+      el.style.transform = `translateY(${window.innerHeight}px)`;
+      el.style.opacity = '0';
+      setTimeout(() => { onClose(); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }, 200);
+    } else {
+      reset();
+    }
+  });
+}
+
+swipeToClose($('#now'), {
+  // Anywhere when the page is scrolled to the top (or on the top bar).
+  canStart: (e) => nowOpen && (e.target.closest('.np-top') || $('.np-layout').scrollTop <= 0),
+  onClose: () => setNowOpen(false),
+});
+swipeToClose($('#sheet'), {
+  canStart: (e) => !!sheetKind && (e.target.closest('.sheet-head') || $('#sheet-body').scrollTop <= 0),
+  onClose: () => closeSheet(),
+});
 
 // Read-only handle for debugging in the browser console.
 window.n4cuply = { get lib() { return lib; }, scans, srcState, player };
