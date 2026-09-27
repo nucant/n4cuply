@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.1'; // keep in sync with version.json
+const APP_VERSION = '2.2'; // keep in sync with version.json
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -61,6 +61,7 @@ const ICON = {
   moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg>',
   gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
+  home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v8.5a1.5 1.5 0 01-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 014 19.5z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -82,6 +83,157 @@ const allFiles = () => Object.values(scans).flatMap((sc) => sc.files);
 const hasScans = () => Object.keys(scans).length > 0;
 const defaultScan = () => scans.default || Object.values(scans)[0] || null;
 
+// ================= tablet dashboard =================
+const PLAYLOG_KEY = 'mp.playlog.v1';
+let playlog = [];
+try { playlog = JSON.parse(localStorage.getItem(PLAYLOG_KEY) || '[]'); } catch (e) { playlog = []; }
+
+function logPlay(t) {
+  playlog.push({ at: Date.now(), s: Math.round(t.duration || 0) });
+  if (playlog.length > 3000) playlog = playlog.slice(-3000);
+  try { localStorage.setItem(PLAYLOG_KEY, JSON.stringify(playlog)); } catch (e) { /* ignore */ }
+}
+
+/** Minutes listened on each of the last 7 days (oldest first). */
+function weekMinutes() {
+  const days = [];
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  for (let i = 6; i >= 0; i--) {
+    const from = start.getTime() - i * 864e5;
+    const mins = playlog.filter((p) => p.at >= from && p.at < from + 864e5).reduce((s, p) => s + p.s, 0) / 60;
+    days.push({ label: new Date(from).toLocaleDateString('en-US', { weekday: 'narrow' }), mins: Math.round(mins), today: i === 0 });
+  }
+  return days;
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+const isDashboard = () => document.body.classList.contains('layout-tablet') && route().name === 'home' && !$('#q').value.trim();
+
+function renderDashboard() {
+  const t = player.current();
+  const s = player.state;
+  const now = new Date();
+  const name = accountName(primaryAccount()).split(' ')[0];
+  const total = lib.tracks.reduce((a, x) => a + (x.duration || 0), 0);
+  const lossless = lib.tracks.filter((x) => x.meta?.lossless).length;
+  const hires = lib.tracks.filter((x) => x.meta?.hiRes).length;
+  const week = weekMinutes();
+  const maxMin = Math.max(30, ...week.map((d) => d.mins));
+  const weekTotal = week.reduce((a, d) => a + d.mins, 0);
+  const byKey = new Map(lib.tracks.map((x) => [x.key, x]));
+  const recentTracks = recent.map((k) => byKey.get(k)).filter(Boolean).slice(0, 4);
+  lists.dashRecent = recentTracks;
+  const upNext = s.order.slice(s.pos + 1, s.pos + 5).map((qi) => s.queue[qi]).filter(Boolean);
+  const lyric = $('#np-lyric')?.dataset.text && !$('#np-lyric').hidden ? $('#np-lyric').dataset.text : '';
+  const m = t?.meta;
+  const tile = (action, icon, label, extra = '') => `<button class="dash-tile" type="button" data-action="${action}" ${extra}>${icon}<span>${label}</span></button>`;
+  const miniRow = (x, list, i) => `
+    <button class="dash-row" type="button" data-action="play-track" data-list="${list}" data-i="${i}">
+      <span class="art sm" data-cover="${esc(x.cover)}" data-seed="${esc(x.album)}"></span>
+      <span class="row-text"><b>${esc(x.title)}</b><small>${esc(x.artist || x.album)}</small></span>
+      <span class="dur">${x.duration ? fmt(x.duration) : ''}</span>
+    </button>`;
+  lists.dashNext = upNext;
+
+  return `
+  <div class="dash">
+    <header class="dash-status">
+      <div><b id="dash-clock">${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</b><span>${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span></div>
+      <div class="dash-hello">${greeting()}${name ? ', ' + esc(name) : ''}</div>
+      <div class="dash-meta">${m?.hiRes ? `<span class="dash-pill hires">${ICON.headphones}Hi-Res</span>` : ''}${plural(lib.tracks.length, 'song')}</div>
+    </header>
+
+    <section class="dash-card dash-now">
+      ${t ? `
+        <div class="dash-now-top">
+          <span class="art dash-cover" data-cover="${esc(t.cover)}" data-seed="${esc(t.album)}"></span>
+          <div class="dash-now-text">
+            <small>${esc(t.album)}</small>
+            <b>${esc(t.title)}</b>
+            <span>${esc(t.artist || '')}</span>
+          </div>
+        </div>
+        <div class="dash-progress"><span id="dash-cur">0:00</span><div class="dash-bar"><i id="dash-bar"></i></div><span id="dash-left">-0:00</span></div>
+        <div class="dash-controls">
+          <button class="icon-btn" type="button" data-action="dash-prev" aria-label="Previous">${ICON.prev}</button>
+          <button class="dash-play" type="button" data-action="dash-toggle" aria-label="${s.playing ? 'Pause' : 'Play'}">${s.loading ? ICON.spinner : s.playing ? ICON.pause : ICON.play}</button>
+          <button class="icon-btn" type="button" data-action="dash-next" aria-label="Next">${ICON.next}</button>
+          <button class="icon-btn ${s.shuffle ? 'dash-on' : ''}" type="button" data-action="dash-shuffle" aria-label="Shuffle">${ICON.shuffle}</button>
+          <button class="icon-btn" type="button" data-action="dash-open" aria-label="Open Now Playing">${ICON.chevron}</button>
+        </div>`
+    : `<div class="dash-empty"><b>Nothing playing</b><span>Start with everything, shuffled.</span>
+        <button class="pill-btn light" type="button" data-action="shuffle-list" data-list="all">${ICON.shuffle}<span>Shuffle all</span></button></div>`}
+    </section>
+
+    <section class="dash-card dash-week">
+      <div class="dash-head"><b>Listening this week</b><span>${weekTotal ? `${weekTotal} min` : 'Play something to fill this in'}</span></div>
+      <div class="dash-bars">${week.map((d) => `<div class="dash-bar-col ${d.today ? 'today' : ''}"><i style="height:${Math.max(4, (d.mins / maxMin) * 100)}%"></i><span>${d.label}</span></div>`).join('')}</div>
+    </section>
+
+    <section class="dash-card dash-visual" data-action="dash-open">
+      <span class="art dash-visual-art" data-cover="${esc(t?.cover || lib.albums[0]?.cover || '')}" data-seed="${esc(t?.album || 'N4cuply')}"></span>
+      <div class="dash-visual-shade"></div>
+      <div class="dash-visual-top">${m ? `<span class="dash-pill">${esc(qualityBadge(m))}</span>` : ''}</div>
+      <div class="dash-visual-text">
+        ${lyric ? `<p class="dash-lyric">${esc(lyric)}</p>` : ''}
+        <small>${esc(m ? techLine(m) : 'N4cuply')}</small>
+      </div>
+    </section>
+
+    <section class="dash-card dash-stats">
+      <div class="dash-head"><b>Library</b><span>${plural(lib.albums.length, 'album')} · ${plural(lib.artists.length, 'artist')}</span></div>
+      <div class="dash-nums">
+        <div><b>${lib.tracks.length}</b><span>Songs</span></div>
+        <div><b>${Math.round(total / 3600)}</b><span>Hours</span></div>
+        <div><b>${lossless}</b><span>Lossless</span></div>
+        <div><b>${hires}</b><span>Hi-Res</span></div>
+      </div>
+    </section>
+
+    <section class="dash-card dash-list">
+      <div class="dash-head"><b>${upNext.length ? 'Up next' : 'Recently played'}</b><button class="text-btn" type="button" data-action="${upNext.length ? 'dash-queue' : 'dash-albums'}">${upNext.length ? 'Queue' : 'Library'}</button></div>
+      ${(upNext.length ? upNext.map((x, i) => `
+        <button class="dash-row" type="button" data-action="jump" data-pos="${s.pos + 1 + i}">
+          <span class="art sm" data-cover="${esc(x.cover)}" data-seed="${esc(x.album)}"></span>
+          <span class="row-text"><b>${esc(x.title)}</b><small>${esc(x.artist || x.album)}</small></span>
+          <span class="dur">${x.duration ? fmt(x.duration) : ''}</span>
+        </button>`).join('') : recentTracks.map((x, i) => miniRow(x, 'dashRecent', i)).join(''))
+        || '<p class="info-note">Songs you play show up here.</p>'}
+    </section>
+
+    <section class="dash-tiles">
+      ${tile('shuffle-list', ICON.shuffle, 'Shuffle all', 'data-list="all"')}
+      ${tile('dash-liked', ICON.heartFill, 'Liked')}
+      ${tile('dash-playlists', ICON.queue, 'Playlists')}
+      ${tile('dash-sleep', ICON.moon, player.state.sleepAt ? 'Sleep on' : 'Sleep', player.state.sleepAt ? 'data-on="1"' : '')}
+      ${tile('organize', ICON.wand, 'Organize')}
+      ${tile('upload', ICON.upload, 'Upload')}
+    </section>
+  </div>`;
+}
+
+function updateDashboardTime() {
+  const bar = document.getElementById('dash-bar');
+  if (!bar) return;
+  const a = player.audio;
+  const d = a.duration || player.current()?.duration || 0;
+  bar.style.transform = `scaleX(${d ? Math.min(1, a.currentTime / d).toFixed(4) : 0})`;
+  const cur = document.getElementById('dash-cur');
+  const left = document.getElementById('dash-left');
+  if (cur) cur.textContent = fmt(a.currentTime);
+  if (left) left.textContent = '-' + fmt(Math.max(0, d - a.currentTime));
+}
+
+setInterval(() => {
+  const c = document.getElementById('dash-clock');
+  if (c) c.textContent = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}, 15e3);
+
 // ================= layout: phone / tablet / computer =================
 const LAYOUT_NAMES = { phone: 'Phone', tablet: 'Tablet', desktop: 'Computer' };
 
@@ -100,10 +252,14 @@ function effectiveLayout() {
 }
 
 function applyLayout() {
-  const mode = effectiveLayout();
+  let mode = effectiveLayout();
   const w = window.innerWidth;
   const landscape = w > window.innerHeight;
   const b = document.body.classList;
+  // Tablets: dashboard when held sideways, a bigger phone layout when upright.
+  const bigPhone = mode === 'tablet' && !landscape;
+  if (bigPhone) mode = 'phone';
+  b.toggle('big-phone', bigPhone);
   b.remove('layout-phone', 'layout-tablet', 'layout-desktop');
   b.add('layout-' + mode);
   const wide = mode !== 'phone';
@@ -114,9 +270,11 @@ function applyLayout() {
   b.toggle('np-wide', npWide);
   b.toggle('np-narrow', !npWide);
   // Phone layout on a big screen: keep it phone-sized in the middle.
-  b.toggle('phone-frame', mode === 'phone' && w > 700);
+  b.toggle('phone-frame', mode === 'phone' && w > 700 && !bigPhone);
   b.toggle('has-sidebar', wide && w >= 700);
+  lastSidebar = '';
   renderSidebar();
+  if (lib && !$('#app').hidden) render();
 }
 
 let layoutTimer = 0;
@@ -137,7 +295,28 @@ function renderSidebar() {
   const r = route();
   const q = $('#q').value.trim();
   const tab = q ? '' : r.name === 'album' ? 'albums' : r.name === 'artist' ? 'artists' : r.name === 'playlist' ? 'playlists' : r.name;
+  document.body.classList.toggle('on-dash', r.name === 'home' && !q && document.body.classList.contains('layout-tablet'));
   const link = (href, name, icon, label) => `<a class="side-link ${tab === name ? 'on' : ''}" href="${href}">${icon}<span>${label}</span></a>`;
+  if (document.body.classList.contains('layout-tablet')) {
+    const rail = (href, name, icon, label) => `<a class="rail-btn ${tab === name ? 'on' : ''}" href="${href}" aria-label="${label}" title="${label}">${icon}</a>`;
+    const railBtn = (action, icon, label) => `<button class="rail-btn" type="button" data-action="${action}" aria-label="${label}" title="${label}">${icon}</button>`;
+    const railHtml = `
+      <a class="rail-logo" href="#home" aria-label="Home"><img src="icons/icon.svg" alt="" width="34" height="34"></a>
+      <nav class="rail-group" aria-label="Library">
+        ${rail('#home', 'home', ICON.home, 'Home')}
+        ${rail('#albums', 'albums', ICON.album, 'Albums')}
+        ${rail('#songs', 'songs', ICON.queue, 'Songs')}
+        ${rail('#artists', 'artists', ICON.mic, 'Artists')}
+        ${rail('#playlists', 'playlists', ICON.heart, 'Playlists')}
+      </nav>
+      <div class="rail-group rail-bottom">
+        ${railBtn('upload', ICON.upload, 'Upload')}
+        ${railBtn('organize', ICON.wand, 'Organize')}
+        ${railBtn('settings', ICON.gear, 'Settings')}
+      </div>`;
+    if (railHtml !== lastSidebar) { el.innerHTML = railHtml; lastSidebar = railHtml; }
+    return;
+  }
   const current = r.name === 'playlist' ? r.id : '';
   const pls = lib ? playlists() : [];
   const html = `
@@ -420,8 +599,9 @@ function route() {
   if ((m = h.match(/^album\/(.+)$/))) return { name: 'album', id: decodeURIComponent(m[1]) };
   if ((m = h.match(/^artist\/(.+)$/))) return { name: 'artist', id: decodeURIComponent(m[1]) };
   if ((m = h.match(/^playlist\/(.+)$/))) return { name: 'playlist', id: decodeURIComponent(m[1]) };
-  if (h === 'songs' || h === 'artists' || h === 'playlists') return { name: h };
-  return { name: 'albums' };
+  if (h === 'songs' || h === 'artists' || h === 'playlists' || h === 'albums') return { name: h };
+  // Tablets open on the dashboard; phones and computers on albums.
+  return { name: document.body.classList.contains('layout-tablet') ? 'home' : 'albums' };
 }
 
 const scrollMemory = new Map();
@@ -485,7 +665,8 @@ function render() {
   else if (r.name === 'album' && lib.albumsById[r.id]) html = renderAlbum(lib.albumsById[r.id]);
   else if (r.name === 'artist' && lib.artists.find((a) => a.name === r.id)) html = renderArtist(lib.artists.find((a) => a.name === r.id));
   else if (r.name === 'playlist') html = renderPlaylist(r.id);
-  else html = renderHome(['album', 'artist', 'playlist'].includes(r.name) ? 'albums' : r.name);
+  else if (r.name === 'home' && document.body.classList.contains('layout-tablet')) html = renderDashboard();
+  else html = renderHome(['album', 'artist', 'playlist', 'home'].includes(r.name) ? 'albums' : r.name);
   if (!setMain(html)) { markPlaying(); if (sel.on) markSelected(); return; }
   hydrateArt(main);
   if (sel.on) markSelected();
@@ -900,6 +1081,7 @@ function updatePlayerUi() {
   $('#c-repeat').setAttribute('aria-label', { off: 'Repeat off', all: 'Repeat all', one: 'Repeat one' }[s.repeat]);
   if (sheetKind === 'queue') openQueue(false);
   if (sheetKind === 'info' && sheetTrackId === t.id && !$('#analysis .spectro')) openTrackInfo(t.id, false);
+  if (isDashboard()) render();
   updateLikeButton();
   markPlaying();
   updatePlayState();
@@ -916,6 +1098,8 @@ function updateLikeButton() {
 
 function updatePlayState() {
   const s = player.state;
+  const dashPlay = document.querySelector('.dash-play');
+  if (dashPlay) dashPlay.innerHTML = s.loading ? ICON.spinner : s.playing ? ICON.pause : ICON.play;
   const icon = s.loading ? ICON.spinner : s.playing ? ICON.pause : ICON.play;
   const label = s.playing ? 'Pause' : 'Play';
   for (const id of ['#mini-play', '#c-play']) {
@@ -962,6 +1146,7 @@ function updateTime() {
   $('#t-left').textContent = '-' + fmt(Math.max(0, d - cur));
   syncLyrics(a.currentTime);
   countPlay(player.current(), a.currentTime);
+  updateDashboardTime();
 }
 
 let nowOpen = false;
@@ -1015,6 +1200,9 @@ function updateLyricPreview() {
   if (text && el.dataset.text !== text) {
     el.dataset.text = text;
     el.innerHTML = `<span>${esc(text)}</span>${ICON.chevron}`;
+    const dl = document.querySelector('.dash-lyric');
+    if (dl) dl.textContent = text;
+    else if (isDashboard()) render();
   }
 }
 
@@ -2202,6 +2390,7 @@ function countPlay(t, time) {
   countedId = t.id;
   plays[t.key] = (plays[t.key] || 0) + 1;
   remember(t);
+  logPlay(t);
   try { localStorage.setItem(PLAYS_KEY, JSON.stringify(plays)); } catch (e) { /* ignore */ }
 }
 
@@ -2886,6 +3075,16 @@ function wireStaticUi() {
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
     else if (action === 'collection') openCollectionMenu(el.dataset.kind, el.dataset.id);
+    else if (action === 'dash-toggle') withAuth(() => player.toggle());
+    else if (action === 'dash-next') withAuth(() => player.next());
+    else if (action === 'dash-prev') withAuth(() => player.prev());
+    else if (action === 'dash-shuffle') player.setShuffle(!player.state.shuffle);
+    else if (action === 'dash-open') { if (player.current()) setNowOpen(true); }
+    else if (action === 'dash-queue') openQueue();
+    else if (action === 'dash-albums') location.hash = 'albums';
+    else if (action === 'dash-liked') location.hash = 'playlist/liked';
+    else if (action === 'dash-playlists') location.hash = 'playlists';
+    else if (action === 'dash-sleep') openSleep();
     else if (action === 'home') { e.preventDefault(); $('#q').value = ''; location.hash = ''; render(); }
     else if (action === 'select') { if (sel.on) endSelect(); else startSelect(); }
     else if (action === 'add-songs') openAddSongs(el.dataset.id);
