@@ -73,7 +73,7 @@ function makeClient(scope) {
       }
       const write = google.accounts.oauth2.hasGrantedAllScopes(resp, WRITE_SCOPE);
       if (scope.includes(WRITE_SCOPE) && !write) {
-        settle('reject', new Error('Upload permission was not granted. Tick the Drive box to allow uploads.'));
+        settle('reject', new Error('Upload permission was not granted. In the Google window, tick "See, edit, create and delete all of your Google Drive files".'));
         return;
       }
       try {
@@ -148,7 +148,10 @@ export function signIn({ account = '', choose = false, write = false } = {}) {
   pendingOpts = { account: choose ? '' : account };
   const wantWrite = write || !!tokenOf(target)?.write;
   if (wantWrite && !writeClient) writeClient = makeClient(`${SCOPE} ${WRITE_SCOPE}`);
-  const override = { prompt: choose ? 'select_account' : '' };
+  // A new permission (uploading) needs the consent screen; with prompt '' Google
+  // may close the popup at once and return a token without it.
+  const needsConsent = write && !tokenOf(target)?.write;
+  const override = { prompt: choose ? 'select_account' : needsConsent ? 'consent' : '' };
   if (target) override.login_hint = target;
   (wantWrite ? writeClient : readClient).requestAccessToken(override);
   return promise;

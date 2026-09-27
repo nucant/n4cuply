@@ -2,7 +2,7 @@
 // 1) Caches the app files so it opens fast (and offline).
 // 2) Forwards "stream/<fileId>" requests to Drive with the token, so songs
 //    start without a full download and seeking works.
-const CACHE = 'my-player-v5';
+const CACHE = 'my-player-v6';
 const SHELL = [
   './',
   'index.html',
