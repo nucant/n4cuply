@@ -2,7 +2,7 @@
 // 1) App-er file gulo cache kore, jate taratari khole.
 // 2) "stream/<fileId>" request Drive-e pathay token soho, jate gaan
 //    puro download na kore-i shuru hoy ar seek kaaj kore.
-const CACHE = 'my-player-v1';
+const CACHE = 'my-player-v2';
 const SHELL = [
   './',
   'index.html',
