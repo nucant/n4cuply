@@ -2,7 +2,7 @@
 // 1) Caches the app files so it opens fast (and offline).
 // 2) Forwards "stream/<fileId>" requests to Drive with the token, so songs
 //    start without a full download and seeking works.
-const CACHE = 'n4cuply-v19';
+const CACHE = 'n4cuply-v20';
 const SHELL = [
   './',
   'index.html',
@@ -24,6 +24,7 @@ const SHELL = [
   'js/tagwrite.js',
   'js/artists.js',
   'js/analyze.js',
+  'version.json',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
@@ -57,7 +58,8 @@ self.addEventListener('fetch', (event) => {
   // App files: network first, cache as fallback (so the app opens offline).
   event.respondWith((async () => {
     try {
-      const res = await fetch(event.request);
+      // Always ask GitHub (not the browser's saved copy) so updates arrive.
+      const res = await fetch(event.request, { cache: 'no-cache' });
       if (res.ok) {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(event.request, copy));

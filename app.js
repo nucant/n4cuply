@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.0';
+const APP_VERSION = '2.1'; // keep in sync with version.json
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -167,6 +167,13 @@ function renderSidebar() {
 // ================= boot =================
 async function boot() {
   registerServiceWorker();
+  checkForUpdate();
+  if (new URL(location.href).searchParams.has('v')) {
+    // Clean the address after an update reload.
+    const url = new URL(location.href);
+    url.searchParams.delete('v');
+    history.replaceState(history.state, '', url.toString());
+  }
   applyLayout();
   wireStaticUi();
   for (const src of listSources()) {
@@ -199,7 +206,49 @@ async function boot() {
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('sw.js').catch(() => { /* playback still works without it */ });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => reg.update())
+    .catch(() => { /* playback still works without it */ });
+}
+
+// ================= updates =================
+const APP_FILES = [
+  './', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'sw.js', 'version.json',
+  'js/auth.js', 'js/drive.js', 'js/library.js', 'js/player.js', 'js/meta.js', 'js/store.js', 'js/covers.js',
+  'js/lyrics.js', 'js/settings.js', 'js/sources.js', 'js/organize.js', 'js/online.js', 'js/tagwrite.js',
+  'js/artists.js', 'js/analyze.js',
+];
+
+/** Clears every cached copy of the app and reloads the newest version. */
+async function forceUpdate(version = '') {
+  toast('Updating N4cuply…');
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+    await Promise.all(regs.map((r) => r.unregister()));
+    if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+    // Refresh the browser's own copy of each file too.
+    await Promise.all(APP_FILES.map((f) => fetch(f, { cache: 'reload' }).catch(() => {})));
+  } catch (e) { /* reload anyway */ }
+  const url = new URL(location.href);
+  url.searchParams.set('v', version || String(Date.now()));
+  location.replace(url.toString());
+}
+
+/** At launch: if GitHub has a newer version than this one, update once. */
+async function checkForUpdate() {
+  try {
+    const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (!version || version === APP_VERSION) {
+      sessionStorage.removeItem('mp.update.tried');
+      return;
+    }
+    // Guard against a reload loop if GitHub is still publishing.
+    if (sessionStorage.getItem('mp.update.tried') === version) return;
+    sessionStorage.setItem('mp.update.tried', version);
+    forceUpdate(version);
+  } catch (e) { /* offline: keep the current version */ }
 }
 
 // ================= screens =================
@@ -1347,6 +1396,11 @@ async function openSettings(push = true) {
       <div class="set-row"><span><b>Log out</b><small>Signs out and clears saved data on this device.</small></span>
         <button class="pill-btn small danger" type="button" data-set-action="logout">Log out</button></div>
     </div>
+    <div class="info-group set-group">
+      <h4>App</h4>
+      <div class="set-row"><span><b>Version ${APP_VERSION}</b><small>Checks for updates every time the app opens. If something still looks old, force an update.</small></span>
+        <button class="pill-btn small light" type="button" data-set-action="force-update">Force update</button></div>
+    </div>
     <p class="info-note center">N4cuply ${APP_VERSION} · ${plural(allFiles().length, 'song')} from ${plural(listSources().length, 'source')}</p>`;
   openSheet('settings', 'Settings', html, push);
   const [meta, covers] = await Promise.all([idbGetAll('meta'), idbGetAll('covers')]);
@@ -1414,6 +1468,7 @@ function onSettingsEvent(e) {
   if (act === 'folder-reset') { setSetting('folderId', ''); switchFolder(); }
   if (act === 'install' && installPrompt) { installPrompt.prompt(); installPrompt = null; openSettings(false); }
   if (act === 'logout') logout();
+  if (act === 'force-update') forceUpdate();
 }
 
 function resetLibrary() {
