@@ -1,5 +1,5 @@
-// Album cover: Drive theke ane, choto kore device-e rakhe, ar chobi theke
-// theme-er rong (tint) ber kore.
+// Album covers: fetched from Drive, resized and cached on the device, and
+// used to pick the theme tint.
 import { fetchBlob, fetchRange } from './drive.js';
 import { pickPicture } from './meta.js';
 import { idbGet, idbPut } from './store.js';
@@ -8,8 +8,8 @@ const mem = new Map(); // coverId -> Promise<{url, color}|null>
 const MAX_EDGE = 720;
 
 /**
- * coverId: "pic:<trackId>" (file-er bhetorer chobi) ba "file:<imageFileId>".
- * getTrack: trackId diye track object (meta-r jonno).
+ * coverId: "pic:<trackId>" (picture embedded in the file) or "file:<imageFileId>".
+ * getTrack: returns the track object for a trackId (for its metadata).
  */
 export function loadCover(coverId, getTrack) {
   if (!coverId) return Promise.resolve(null);
@@ -82,7 +82,7 @@ async function shrinkAndColor(blob) {
   return { small, color: dominant(data) };
 }
 
-/** Chobi-r sobcheye "jiboonto" rong: [hue 0-360, sat 0-1, light 0-1]. */
+/** The most vivid dominant colour of an image: [hue 0-360, sat 0-1, light 0-1]. */
 function dominant(data) {
   const bins = Array.from({ length: 24 }, () => ({ w: 0, r: 0, g: 0, b: 0 }));
   let ar = 0, ag = 0, ab = 0, n = 0;
@@ -91,12 +91,12 @@ function dominant(data) {
     ar += r; ag += g; ab += b; n++;
     const [h, sat, l] = rgbToHsl(r, g, b);
     if (l < 0.1 || l > 0.92 || sat < 0.18) continue;
-    // Beshi jayga jure thaka rong jitbe; saturation ektu sahajjo kore.
+    // Colours covering more area win; saturation helps a little.
     const weight = (0.35 + sat) * (1 - Math.abs(l - 0.5));
     const bin = bins[Math.floor(h / 15) % 24];
     bin.w += weight; bin.r += r * weight; bin.g += g * weight; bin.b += b * weight;
   }
-  // Pasher bin-o gunbo, jate gradient-e chhoriye thaka rong haare na.
+  // Count neighbouring bins too, so colours spread across a gradient still win.
   let bestI = 0;
   let bestScore = -1;
   for (let i = 0; i < 24; i++) {
@@ -123,7 +123,7 @@ function rgbToHsl(r, g, b) {
   return [h * 60, s, l];
 }
 
-/** Tint theke CSS variable: pichoner gorho rong, majhari, aar halka accent. */
+/** CSS variables from a tint: deep background, mid tone and a light accent. */
 export function tintVars(color, seedHue = 250) {
   const [h, s] = color || [seedHue, 0.45, 0.4];
   const sat = Math.min(0.7, Math.max(0.18, s));

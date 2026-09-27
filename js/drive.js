@@ -1,22 +1,24 @@
-// Google Drive API (v3) - shudhu pora.
+// Google Drive API (v3).
 import { accessToken } from './auth.js';
 
 export const API = 'https://www.googleapis.com/drive/v3';
+const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 export const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const FILE_FIELDS = 'id,name,mimeType,size,md5Checksum,modifiedTime,parents';
 
 export class AuthError extends Error {}
 
 async function request(url, init = {}) {
   const t = accessToken();
-  if (!t) throw new AuthError('Abar login korte hobe.');
+  if (!t) throw new AuthError('Please sign in again.');
   const res = await fetch(url, { ...init, headers: { ...(init.headers || {}), Authorization: 'Bearer ' + t } });
-  if (res.status === 401) throw new AuthError('Session sesh hoye geche. Abar connect koro.');
+  if (res.status === 401) throw new AuthError('Your session expired. Connect again.');
   if (!res.ok) {
     let msg = 'Drive error ' + res.status;
     try {
       const j = await res.json();
       if (j.error?.message) msg = j.error.message;
-    } catch (e) { /* json na */ }
+    } catch (e) { /* not JSON */ }
     const err = new Error(msg);
     err.status = res.status;
     throw err;
@@ -24,8 +26,8 @@ async function request(url, init = {}) {
   return res;
 }
 
-function withParams(path, params) {
-  const url = new URL(API + path);
+function withParams(path, params, base = API) {
+  const url = new URL(base + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url;
 }
@@ -39,7 +41,7 @@ export async function getFolder(id) {
     return res.json();
   } catch (e) {
     if (e.status === 404) {
-      throw new Error('Gaaner folder pawa jayni. Je Google account-e folder-ta ache, sei account diye login koro.');
+      throw new Error("Music folder not found. Sign in with the Google account that owns the folder, or pick another folder in Settings.");
     }
     throw e;
   }
@@ -51,7 +53,7 @@ export async function listChildren(folderId) {
   do {
     const params = {
       q: `'${folderId}' in parents and trashed = false`,
-      fields: 'nextPageToken,files(id,name,mimeType,size,md5Checksum,modifiedTime)',
+      fields: `nextPageToken,files(${FILE_FIELDS})`,
       pageSize: '1000',
       orderBy: 'name',
       supportsAllDrives: 'true',
@@ -74,11 +76,58 @@ export async function fetchBlob(id, signal) {
   return res.blob();
 }
 
-/** File-er ekta ongsho (start..end, duto-i inclusive). */
+/** Part of a file (start..end, both inclusive). */
 export async function fetchRange(id, start, end) {
   const res = await request(mediaUrl(id), { headers: { Range: `bytes=${start}-${end}` } });
   const buf = await res.arrayBuffer();
-  // Server range na mene puro file dile, dorkari ongsho kete nei.
+  // If the server ignored the range and sent the whole file, cut out what we asked for.
   if (res.status === 200 && buf.byteLength > end - start + 1) return buf.slice(start, end + 1);
   return buf;
+}
+
+export async function createFolder(name, parentId) {
+  const res = await request(withParams('/files', { fields: FILE_FIELDS, supportsAllDrives: 'true' }), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
+  });
+  return res.json();
+}
+
+/**
+ * Uploads one file with a resumable session so large FLACs work and we get
+ * progress. onProgress(0..1). Resolves with the new file's metadata.
+ */
+export async function uploadFile(file, parentId, onProgress, signal) {
+  const init = await request(withParams('/files', { uploadType: 'resumable', fields: FILE_FIELDS, supportsAllDrives: 'true' }, UPLOAD_API), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': file.type || 'application/octet-stream',
+      'X-Upload-Content-Length': String(file.size),
+    },
+    body: JSON.stringify({ name: file.name, parents: [parentId] }),
+  });
+  const session = init.headers.get('Location');
+  if (!session) throw new Error("Drive didn't start the upload. Try again.");
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', session);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); } catch (e) { resolve({}); }
+      } else if (xhr.status === 401) {
+        reject(new AuthError('Your session expired. Connect again.'));
+      } else {
+        reject(new Error(`Upload failed (${xhr.status}).`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Upload failed. Check your connection.'));
+    xhr.onabort = () => reject(new Error('Upload cancelled.'));
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(file);
+  });
 }

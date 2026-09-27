@@ -1,12 +1,15 @@
-// Google login (Google Identity Services token flow).
-// Token device-e thake, ~1 ghonta valid. Popup kholar jonno signIn()
-// sobsomoy user-er click-er bhetor theke call korte hobe.
+// Google sign-in (Google Identity Services token flow).
+// The token lives on this device and is valid for about an hour. signIn()
+// opens a popup, so always call it from inside a user's click handler.
 import { CONFIG } from '../config.js';
 
 export const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+// Asked for only when the user uploads songs.
+export const WRITE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const KEY = 'mp.token';
 
-let client = null;
+let readClient = null;
+let writeClient = null;
 let pending = null;
 let token = loadToken();
 
@@ -14,7 +17,7 @@ function loadToken() {
   try {
     const t = JSON.parse(localStorage.getItem(KEY));
     if (t && t.exp > Date.now() + 60e3) return t;
-  } catch (e) { /* storage bondho */ }
+  } catch (e) { /* storage unavailable */ }
   return null;
 }
 
@@ -23,7 +26,7 @@ function saveToken(t) {
   try {
     if (t) localStorage.setItem(KEY, JSON.stringify(t));
     else localStorage.removeItem(KEY);
-  } catch (e) { /* storage bondho */ }
+  } catch (e) { /* storage unavailable */ }
 }
 
 function waitForGis() {
@@ -36,7 +39,7 @@ function waitForGis() {
         resolve();
       } else if (++tries > 150) {
         clearInterval(timer);
-        reject(new Error('Google login load hoyni. Internet connection check koro.'));
+        reject(new Error("Google sign-in didn't load. Check your internet connection."));
       }
     }, 100);
   });
@@ -48,37 +51,51 @@ function settle(fn, value) {
   if (p) p[fn](value);
 }
 
-export async function initAuth() {
-  await waitForGis();
-  client = google.accounts.oauth2.initTokenClient({
+function makeClient(scope) {
+  return google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.googleClientId,
-    scope: SCOPE,
+    scope,
+    include_granted_scopes: true,
     callback: (resp) => {
       if (resp.error) {
         settle('reject', new Error(resp.error_description || resp.error));
         return;
       }
       if (!google.accounts.oauth2.hasGrantedAllScopes(resp, SCOPE)) {
-        settle('reject', new Error('Drive permission dewa hoyni. Abar try koro, Drive-er box-e tick dite hobe.'));
+        settle('reject', new Error('Drive access was not granted. Try again and tick the Google Drive box.'));
         return;
       }
-      saveToken({ value: resp.access_token, exp: Date.now() + Number(resp.expires_in || 3599) * 1000 });
+      const write = google.accounts.oauth2.hasGrantedAllScopes(resp, WRITE_SCOPE);
+      if (scope.includes(WRITE_SCOPE) && !write) {
+        settle('reject', new Error('Upload permission was not granted. Tick the Drive box to allow uploads.'));
+        return;
+      }
+      saveToken({ value: resp.access_token, exp: Date.now() + Number(resp.expires_in || 3599) * 1000, write });
       settle('resolve', token.value);
     },
     error_callback: (err) => {
-      const msg = err?.type === 'popup_closed' ? 'Login window bondho hoye geche.'
-        : err?.type === 'popup_failed_to_open' ? 'Popup khulte parchi na. Browser-e popup allow koro.'
-        : 'Login hoyni.';
+      const msg = err?.type === 'popup_closed' ? 'The sign-in window was closed.'
+        : err?.type === 'popup_failed_to_open' ? "Couldn't open the sign-in popup. Allow popups for this site."
+        : 'Sign-in failed.';
       settle('reject', new Error(msg));
     },
   });
+}
+
+export async function initAuth() {
+  await waitForGis();
+  readClient = makeClient(SCOPE);
 }
 
 export function hasToken() {
   return !!token && token.exp > Date.now() + 30e3;
 }
 
-/** 10 minute-er kom baki thakle true. Click-er somoy refresh korar jonno. */
+export function canWrite() {
+  return hasToken() && !!token.write;
+}
+
+/** True when less than 10 minutes are left, so we can refresh on the next click. */
 export function expiresSoon() {
   return !token || token.exp - Date.now() < 10 * 60e3;
 }
@@ -87,14 +104,19 @@ export function accessToken() {
   return hasToken() ? token.value : null;
 }
 
-/** Popup khule token ane. User-er click handler theke sync-bhabe call koro. */
-export function signIn() {
-  if (!client) return Promise.reject(new Error('Login ekhono ready na, ektu por try koro.'));
+/**
+ * Opens the Google popup and resolves with a token. Call synchronously from
+ * a click handler. Pass { write: true } to also ask for upload permission.
+ */
+export function signIn({ write = false } = {}) {
+  if (!readClient) return Promise.reject(new Error("Sign-in isn't ready yet. Try again in a moment."));
   if (pending) return pending.promise;
   let resolve, reject;
   const promise = new Promise((a, b) => { resolve = a; reject = b; });
   pending = { resolve, reject, promise };
-  client.requestAccessToken({ prompt: '' });
+  const wantWrite = write || !!token?.write;
+  if (wantWrite && !writeClient) writeClient = makeClient(`${SCOPE} ${WRITE_SCOPE}`);
+  (wantWrite ? writeClient : readClient).requestAccessToken({ prompt: '' });
   return promise;
 }
 

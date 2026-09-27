@@ -1,4 +1,4 @@
-// Library: Drive folder scan, metadata pora, album / artist banano.
+// Library: scans the Drive folder, reads metadata, builds albums and artists.
 import { getFolder, listChildren, fetchRange, FOLDER_MIME, AuthError } from './drive.js';
 import { RangeReader, readMeta, META_VERSION, first, pickPicture, qualityTag } from './meta.js';
 import { idbGetAll, idbPut, idbClear } from './store.js';
@@ -6,7 +6,9 @@ import { idbGetAll, idbPut, idbClear } from './store.js';
 const AUDIO_RE = /\.(mp3|m4a|m4b|mp4|aac|alac|wav|ogg|oga|opus|flac|webm)$/i;
 const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
 const COVER_RE = /^(cover|folder|front|album)\./i;
-const FILES_KEY = 'mp.files.v2';
+const LRC_RE = /\.lrc$/i;
+const baseName = (name) => name.replace(/\.[^.]+$/, '').toLowerCase();
+const FILES_KEY = 'mp.files.v3';
 
 const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -20,7 +22,7 @@ export async function scanFiles(rootId, onProgress) {
   async function walk(folder, trail) {
     const path = [...trail, folder.name];
     const children = await listChildren(folder.id);
-    const info = { id: folder.id, name: folder.name, path: path.join(' / '), image: null };
+    const info = { id: folder.id, name: folder.name, path: path.join(' / '), image: null, lrc: {} };
     let imageScore = 0;
     const subs = [];
     for (const f of children) {
@@ -31,6 +33,8 @@ export async function scanFiles(rootId, onProgress) {
           id: f.id, name: f.name, size: Number(f.size) || 0, mime: audioMime(f.name, mime),
           md5: f.md5Checksum || '', modified: f.modifiedTime || '', folderId: folder.id,
         });
+      } else if (LRC_RE.test(f.name)) {
+        info.lrc[baseName(f.name)] = f.id;
       } else if (mime.startsWith('image/') || IMAGE_RE.test(f.name)) {
         const score = COVER_RE.test(f.name) ? 2 : 1;
         if (score > imageScore) { info.image = f.id; imageScore = score; }
@@ -43,7 +47,7 @@ export async function scanFiles(rootId, onProgress) {
 
   await walk(root, []);
   const raw = { rootId, rootName: root.name, files, folders, scannedAt: Date.now() };
-  try { localStorage.setItem(FILES_KEY, JSON.stringify(raw)); } catch (e) { /* storage bhora */ }
+  try { localStorage.setItem(FILES_KEY, JSON.stringify(raw)); } catch (e) { /* storage full */ }
   return raw;
 }
 
@@ -91,8 +95,8 @@ export function missingMeta(files) {
 }
 
 /**
- * Jader metadata nei tader file-er header pore. Porte porte onProgress dake.
- * AuthError hole theme jay (login lagbe).
+ * Reads file headers for every file without cached metadata, calling
+ * onProgress as it goes. Stops on AuthError (sign-in needed).
  */
 export async function readMissingMeta(files, onProgress, { concurrency = 4 } = {}) {
   const queue = missingMeta(files);
@@ -168,6 +172,7 @@ export function build(raw) {
       duration: m?.duration || 0,
       quality: qualityTag(m),
       hasPic: !!pickPicture(m),
+      lrcId: folder.lrc?.[baseName(f.name)] || '',
     };
     t.albumKey = `${f.folderId}|${norm(tagAlbum)}`;
     tracksById[t.id] = t;
@@ -184,7 +189,7 @@ export function build(raw) {
     const folder = raw.folders[a.folderId];
     const aa = mostCommon(a.tracks.map((t) => t.albumArtist));
     a.name = t0.album;
-    a.artist = aa.distinct > 1 ? 'Various artists' : aa.value;
+    a.artist = aa.distinct > 1 ? 'Various Artists' : aa.value;
     a.year = a.tracks.map((t) => t.year).filter(Boolean).sort()[0] || '';
     a.genre = mostCommon(a.tracks.map((t) => t.genre)).value;
     a.duration = a.tracks.reduce((s, t) => s + (t.duration || 0), 0);

@@ -1,11 +1,11 @@
-// Audio file-er bhetorer tag ar technical info pore.
-// Puro file download kore na: RangeReader shudhu dorkari byte gulo ane.
+// Reads tags and technical info from audio files.
+// Never downloads the whole file: RangeReader fetches only the bytes it needs.
 // Format: MP3 (ID3v2/v1, Xing/Info/VBRI, LAME), FLAC, OGG Vorbis/Opus,
 // MP4/M4A (AAC, ALAC), WAV.
 
-export const META_VERSION = 3;
+export const META_VERSION = 4;
 const CHUNK = 64 * 1024;
-const MAX_FETCH = 6 * 1024 * 1024; // ek file-e sorbochho eto byte porbo
+const MAX_FETCH = 6 * 1024 * 1024; // never read more than this per file
 
 // ---------------------------------------------------------------- reader
 export class RangeReader {
@@ -53,7 +53,7 @@ export class RangeReader {
       const piece = chunk.subarray(from, Math.min(chunk.length, from + (len - w)));
       out.set(piece, w);
       w += piece.length;
-      if (w >= len || chunk.length < CHUNK) break; // puro pelam, ba file sesh
+      if (w >= len || chunk.length < CHUNK) break; // got everything, or hit end of file
     }
     return w < len ? out.subarray(0, w) : out;
   }
@@ -177,7 +177,7 @@ function parseVorbisComment(r, b, off = 0) {
 // ---------------------------------------------------------------- entry
 /**
  * @param {RangeReader} reader
- * @param {string} name file naam (format guess-er jonno)
+ * @param {string} name file name (used for format hints)
  */
 export async function readMeta(reader, name = '') {
   const head = await reader.bytes(0, 64);
@@ -292,7 +292,7 @@ async function parseId3v2(reader, off, r) {
       }
       continue;
     }
-    if (fsize > 256 * 1024) continue; // onno boro frame (GEOB, PRIV) bad
+    if (fsize > 256 * 1024) continue; // skip other large frames (GEOB, PRIV)
     let data = await reader.bytes(dataStart + skip, fsize - skip);
     if (frameUnsync) data = deUnsync(data);
     readId3Frame(r, id, data, ver);
@@ -385,8 +385,12 @@ function readId3Frame(r, id, b, ver) {
     return;
   }
   if (id === 'SYLT') {
-    r.raw.push(['SYLT', '(synced lyrics)']);
-    r.hasSyncedLyrics = true;
+    const lines = parseSylt(b);
+    if (lines.length) {
+      r.syncedLyrics = lines;
+      r.hasSyncedLyrics = true;
+    }
+    r.raw.push(['SYLT', `(synced lyrics, ${lines.length} lines)`]);
     return;
   }
   if (id[0] === 'W' && id !== 'WXXX') {
@@ -406,6 +410,24 @@ function readId3Frame(r, id, b, ver) {
   } else if (id === 'MCDI') {
     r.raw.push(['MCDI', 'CD TOC']);
   }
+}
+
+// SYLT: enc, lang(3), time format (2 = ms), content type, descriptor, then (text, time) pairs.
+function parseSylt(b) {
+  const enc = b[0];
+  const format = b[4];
+  let p = findTerm(b, 6, enc) + termLen(enc);
+  const out = [];
+  while (p < b.length) {
+    const t = findTerm(b, p, enc);
+    const text = decodeText(b.subarray(p, t), enc).replace(/^\n/, '');
+    p = t + termLen(enc);
+    if (p + 4 > b.length) break;
+    const time = u32(b, p);
+    p += 4;
+    if (format === 2) out.push({ t: time / 1000, text });
+  }
+  return out;
 }
 
 const PIC_TYPES = ['Other', 'Icon', 'Other icon', 'Front cover', 'Back cover', 'Leaflet', 'Media', 'Lead artist', 'Artist', 'Conductor', 'Band', 'Composer', 'Lyricist', 'Location', 'During recording', 'During performance', 'Screen capture', 'Fish', 'Illustration', 'Band logo', 'Publisher logo'];
@@ -734,7 +756,7 @@ async function parseOgg(reader) {
     if (cp) parseVorbisComment(r, cp, 4);
   }
   r.tagType = 'Vorbis comment';
-  // Duration: sesh page-er granule position
+  // Duration: granule position of the last page
   if (reader.size && r.sampleRate) {
     const tailLen = Math.min(reader.size, 65536);
     const tail = await reader.bytes(reader.size - tailLen, tailLen);
@@ -1051,7 +1073,7 @@ export function techLine(meta) {
   return parts.join(' · ');
 }
 
-/** Choto badge: "24/96", "16/44.1", "320", "V0" */
+/** Short badge: "24/96", "16/44.1", "320", "V0" */
 export function qualityTag(meta) {
   if (!meta) return '';
   if (meta.lossless && meta.bitDepth && meta.sampleRate) {

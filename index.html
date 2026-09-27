@@ -24,10 +24,10 @@
     <div class="login-glow" aria-hidden="true"></div>
     <div class="login-card">
       <img src="icons/icon.svg" alt="" class="login-logo" width="84" height="84">
-      <h1>Tomar sob gaan,<br>tomar Drive theke.</h1>
-      <p>Lossless, Hi-Res, sob info soho.</p>
-      <button id="connect" class="pill-btn light big" type="button">Google diye connect koro</button>
-      <p class="login-note">Shudhu read-only. Drive-e kichu bodlay na, delete-o kore na.</p>
+      <h1>Your music,<br>straight from your Drive.</h1>
+      <p>Lossless, Hi-Res, and every detail in the file.</p>
+      <button id="connect" class="pill-btn light big" type="button">Connect with Google</button>
+      <p class="login-note">Read-only access. Nothing in your Drive is changed or deleted.</p>
       <p id="login-error" class="login-error" role="alert" hidden></p>
     </div>
   </section>
@@ -38,26 +38,21 @@
       <a href="#" class="brand" aria-label="Home"><img src="icons/icon.svg" alt="" width="30" height="30"></a>
       <label class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="q" type="search" placeholder="Gaan, album, artist" autocomplete="off" aria-label="Search">
+        <input id="q" type="search" placeholder="Songs, albums, artists" autocomplete="off" aria-label="Search">
       </label>
-      <div class="menu-wrap">
-        <button id="menu-btn" class="round-btn" type="button" aria-label="Menu" aria-expanded="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fill" cx="5" cy="12" r="1.8"/><circle class="fill" cx="12" cy="12" r="1.8"/><circle class="fill" cx="19" cy="12" r="1.8"/></svg>
-        </button>
-        <div id="menu" class="menu glass" hidden>
-          <button type="button" data-menu="refresh">Library refresh koro</button>
-          <button type="button" data-menu="rescan">Sob info abar poro</button>
-          <button type="button" data-menu="install" hidden>Phone-e install koro</button>
-          <button type="button" data-menu="logout" class="danger">Logout</button>
-        </div>
-      </div>
+      <button id="upload-btn" class="round-btn" type="button" aria-label="Upload songs" title="Upload songs">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
+      </button>
+      <button id="settings-btn" class="round-btn" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
+      </button>
     </header>
 
     <main id="main" class="main" tabindex="-1"></main>
 
     <!-- Mini player -->
     <div id="mini" class="mini glass" hidden>
-      <button id="mini-open" class="mini-info" type="button" aria-label="Now playing kholo">
+      <button id="mini-open" class="mini-info" type="button" aria-label="Open Now Playing">
         <span class="art mini-art" id="mini-art"></span>
         <span class="mini-text"><b id="mini-title"></b><small id="mini-artist"></small></span>
       </button>
@@ -75,9 +70,9 @@
         <div class="art np-art" id="np-art"></div>
       </div>
       <div class="np-top">
-        <button id="np-close" class="round-btn glass-soft" type="button" aria-label="Bondho koro"></button>
+        <button id="np-close" class="round-btn glass-soft" type="button" aria-label="Close"></button>
         <span class="np-handle" aria-hidden="true"></span>
-        <button id="np-more" class="round-btn glass-soft" type="button" aria-label="Gaan-er info"></button>
+        <button id="np-more" class="round-btn glass-soft" type="button" aria-label="Song info"></button>
       </div>
       <div class="np-body">
         <p class="np-tech" id="np-tech"></p>
@@ -123,10 +118,13 @@
     <div class="sheet-head">
       <span class="np-handle" aria-hidden="true"></span>
       <h3 id="sheet-title"></h3>
-      <button id="sheet-close" class="round-btn glass-soft" type="button" aria-label="Bondho koro"></button>
+      <button id="sheet-close" class="round-btn glass-soft" type="button" aria-label="Close"></button>
     </div>
     <div id="sheet-body" class="sheet-body"></div>
   </section>
+
+  <input id="file-input" type="file" accept="audio/*,.flac,.m4a,.alac,.opus,.ogg,.wav,.lrc,image/*" multiple hidden>
+  <div id="drop" class="drop" hidden><div><b>Drop to upload</b><span>Songs, .lrc lyrics and cover images</span></div></div>
 
   <div id="toast" class="toast" role="status" hidden></div>
 </body>

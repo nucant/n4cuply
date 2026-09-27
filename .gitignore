@@ -1,8 +1,8 @@
-# Purono Apps Script try (GitHub version use hocche)
+# Old Apps Script experiment (replaced by this web app)
 apps-script/
 .DS_Store
 Thumbs.db
 
-# Local kaajer file (APK, reference) - GitHub-e jabe na
+# Local working files (APKs, references) - never pushed
 Working/
 *.apk

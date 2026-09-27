@@ -1,5 +1,5 @@
-// Device-e choto database (IndexedDB): gaaner metadata ar cover chobi.
-// Kono karone IndexedDB na chole, sob function chup-chap kichu na kore phire ashe.
+// Small on-device database (IndexedDB) for song metadata and cover images.
+// If IndexedDB is unavailable, every function quietly does nothing.
 const DB_NAME = 'my-player';
 const DB_VERSION = 1;
 let dbPromise = null;

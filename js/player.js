@@ -1,6 +1,6 @@
 // Player engine: queue, shuffle, repeat, lock screen control.
-// Gaan service worker-er madhyome Drive theke stream hoy (seek-o kaaj kore).
-// Service worker na thakle puro file download kore play hoy.
+// Songs stream from Drive through the service worker (seeking works).
+// Without a service worker the whole file is downloaded, then played.
 import { accessToken } from './auth.js';
 import { fetchBlob, AuthError } from './drive.js';
 
@@ -28,6 +28,21 @@ let fellBack = false;
 let resumeAt = 0;
 let artwork = null;
 let lastSaved = 0;
+let userVolume = 1;
+let replayGain = 'off'; // off | track | album
+
+function gainFactor(track) {
+  if (replayGain === 'off' || !track?.meta?.tags) return 1;
+  const tags = track.meta.tags;
+  const key = replayGain === 'album' && tags.REPLAYGAIN_ALBUM_GAIN ? 'REPLAYGAIN_ALBUM_GAIN' : 'REPLAYGAIN_TRACK_GAIN';
+  const db = parseFloat(tags[key]?.[0]);
+  // An <audio> element can't boost above 1, so only reductions apply.
+  return Number.isFinite(db) ? Math.min(1, 10 ** (db / 20)) : 1;
+}
+
+function applyVolume() {
+  audio.volume = Math.max(0, Math.min(1, userVolume * gainFactor(current())));
+}
 
 // ---------- helpers ----------
 function current() {
@@ -96,6 +111,7 @@ function load(autoplay = true, startAt = 0) {
   emit('change');
   save(true);
 
+  applyVolume();
   const token = accessToken();
   if (!token) {
     resumeAt = startAt;
@@ -135,13 +151,13 @@ async function loadBlob(track, id, autoplay, startAt) {
       state.needsAuth = true;
       emit('auth');
     } else if (e.name !== 'NotAllowedError') {
-      fail('"' + track.title + '" chalano gelo na. ' + (e.message || ''));
+      fail(`Couldn't play "${track.title}". ${e.message || ''}`);
     }
   }
 }
 
 function onPlayRejected(e) {
-  // Browser play() atkale (autoplay rule) - user play chaple cholbe.
+  // Browser blocked play() (autoplay rule); the user can press play.
   if (e && e.name === 'NotAllowedError') {
     setLoading(false);
     state.playing = false;
@@ -177,13 +193,13 @@ audio.addEventListener('error', () => {
     return;
   }
   if (!fellBack && !blobUrl) {
-    // Stream kaaj korlo na: puro file download kore try.
+    // Streaming failed: download the whole file and try again.
     fellBack = true;
     setLoading(true);
     loadBlob(track, loadId, true, at);
     return;
   }
-  fail('"' + track.title + '" chalano gelo na. File-ta thik ache kina dekho.');
+  fail(`Couldn't play "${track.title}". Check that the file isn't damaged.`);
 });
 
 function onEnded() {
@@ -265,7 +281,7 @@ function cycleRepeat() {
   save(true);
 }
 
-/** Login abar hole je gaan atke chilo, seta jekhane chilo sekhan theke. */
+/** After signing in again, resume the stuck song where it stopped. */
 function resumeAfterAuth() {
   if (state.needsAuth && current()) load(true, resumeAt);
 }
@@ -327,16 +343,16 @@ function save(force = false) {
       repeat: state.repeat,
       time: audio.src ? audio.currentTime : savedTime,
     }));
-  } catch (e) { /* storage bondho */ }
+  } catch (e) { /* storage unavailable */ }
 }
 
-/** Library notun kore banale queue-r track gulo notun object diye bodlay. */
+/** After a library rebuild, swap queued tracks for their fresh objects. */
 function relink(byId) {
   state.queue = state.queue.map((t) => byId[t.id] || t);
   emit('change');
 }
 
-/** Ager bar je gaan chilo seta mini player-e dekhay (auto-play hoy na). */
+/** Show last session's song in the mini player (does not auto-play). */
 function restore(lib) {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(STATE_KEY)); } catch (e) { s = null; }
@@ -352,6 +368,16 @@ function restore(lib) {
     resumeAt = savedTime;
   }
   emit('change');
+}
+
+function setVolume(v) {
+  userVolume = Math.max(0, Math.min(1, v));
+  applyVolume();
+}
+
+function setReplayGain(mode) {
+  replayGain = mode;
+  applyVolume();
 }
 
 export const player = {
@@ -371,4 +397,6 @@ export const player = {
   setArtwork,
   restore,
   relink,
+  setVolume,
+  setReplayGain,
 };

@@ -1,8 +1,8 @@
 // Service worker:
-// 1) App-er file gulo cache kore, jate taratari khole.
-// 2) "stream/<fileId>" request Drive-e pathay token soho, jate gaan
-//    puro download na kore-i shuru hoy ar seek kaaj kore.
-const CACHE = 'my-player-v3';
+// 1) Caches the app files so it opens fast (and offline).
+// 2) Forwards "stream/<fileId>" requests to Drive with the token, so songs
+//    start without a full download and seeking works.
+const CACHE = 'my-player-v4';
 const SHELL = [
   './',
   'index.html',
@@ -16,6 +16,8 @@ const SHELL = [
   'js/meta.js',
   'js/store.js',
   'js/covers.js',
+  'js/lyrics.js',
+  'js/settings.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
@@ -46,7 +48,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App file: age network, na pele cache (offline-e-o app khule).
+  // App files: network first, cache as fallback (so the app opens offline).
   event.respondWith((async () => {
     try {
       const res = await fetch(event.request);
@@ -82,14 +84,14 @@ async function stream(request, url, rawId) {
     return new Response(null, { status: upstream.status });
   }
 
-  // Drive shob header browser-ke dekhay na, tai size theke nijerai banai.
+  // Drive doesn't expose every header to the browser, so rebuild them from the known size.
   const out = new Headers({ 'Content-Type': mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' });
   if (upstream.status === 206 && size) {
     const m = /bytes=(\d*)-(\d*)/.exec(range || '');
     let start = m && m[1] !== '' ? Number(m[1]) : 0;
     let end = m && m[2] !== '' ? Math.min(Number(m[2]), size - 1) : size - 1;
     if (m && m[1] === '' && m[2] !== '') {
-      // "bytes=-500" mane sesh-er 500 byte
+      // "bytes=-500" means the last 500 bytes
       start = Math.max(0, size - Number(m[2]));
       end = size - 1;
     }

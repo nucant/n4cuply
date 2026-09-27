@@ -1,42 +1,57 @@
 # My Player
 
-Nijer gaan shonar jonno private music player. Gaan thake Google Drive-er ekta private folder-e, app sekhan theke sorasori stream kore. Code-e kono password ba secret nei; gaan shunte tomar Google login lagbe.
+A private music player for your own songs. Your music stays in a private Google Drive folder and streams straight from there. There are no passwords or secrets in this code: to hear anything you have to sign in with the Google account that owns the folder.
 
-## Kivabe kaaj kore
+## Features
 
-1. App khulle "Google diye connect koro"
-2. Google-e login, Drive read-only permission "Allow"
-3. Drive folder-er prottek sub-folder ekta album hisebe dekhay
-4. Folder-e `cover.jpg` (ba je kono chobi) rakhle seta album cover hoy
+- Albums, songs and artists built from the tags inside your files
+- Full technical info: codec, sample rate, bit depth, real bitrate, VBR/CBR, LAME preset, FLAC MD5, ReplayGain, MusicBrainz IDs, embedded artwork and every raw tag
+- Synced lyrics from `.lrc` files, ID3 SYLT frames, or LRC timestamps inside the lyrics tag (word-by-word for enhanced LRC)
+- Colors taken from the album art, full-screen Now Playing, lock-screen and headphone controls
+- Upload songs, `.lrc` files and covers to your Drive from the app (drag and drop works too)
+- Settings: music folder, ReplayGain volume normalization, display options, storage, log out
+- Installable on your phone's home screen
 
-Supported: mp3, m4a, aac, wav, ogg, opus, flac, webm.
+Supported audio: FLAC, MP3, M4A (AAC/ALAC), WAV, OGG Vorbis, Opus.
 
-## Settings
+## Organizing your Drive folder
 
-[`config.js`](config.js)-e:
-- `googleClientId`: Google Cloud-er OAuth Client ID
-- `driveFolderId`: gaaner folder-er ID (folder link-er sesh ongsho)
+- Each sub-folder becomes an album (tags win when present).
+- Put `cover.jpg` in a folder, or embed artwork in the files, for album covers.
+- For synced lyrics, add a `.lrc` file with the same name as the song, e.g. `03 Song.flac` + `03 Song.lrc`.
 
-## PC-te test
+## Configuration
 
-`serve.bat` double-click koro, tarpor http://localhost:8080 kholo. Python lagbe.
+[`config.js`](config.js):
+- `googleClientId`: your Google Cloud OAuth Client ID
+- `driveFolderId`: the default music folder (can be changed in Settings)
 
-## Google Cloud setting
+## Test on your PC
 
-Google Auth Platform → Clients → tomar client → **Authorised JavaScript origins**-e egulo thakte hobe:
-- `http://localhost:8080` (PC test)
+Double-click `serve.bat`, then open http://localhost:8080. Needs Python.
+
+## Google Cloud setup
+
+Google Auth Platform → Clients → your client → **Authorised JavaScript origins** must include:
+- `http://localhost:8080` (local testing)
 - `https://nucant.github.io` (GitHub Pages)
 
-Audience → Test users-e tomar Gmail thakte hobe.
+Audience → Test users must include your Gmail. The Google Drive API must be enabled.
+
+Uploading asks once for permission to add files to your Drive; normal playback only uses read-only access.
 
 ## Files
 
-| File | Kaaj |
+| File | Purpose |
 |---|---|
-| `index.html`, `style.css` | App-er screen ar design |
-| `app.js` | Screen, button, search |
-| `js/auth.js` | Google login |
-| `js/drive.js` | Drive API |
-| `js/library.js` | Folder scan → album → gaan |
-| `js/player.js` | Play, queue, shuffle, repeat, lock screen |
-| `sw.js` | Stream (seek soho) ar offline app shell |
+| `index.html`, `style.css` | Screens and design |
+| `app.js` | UI: library, Now Playing, sheets, settings, upload |
+| `js/auth.js` | Google sign-in |
+| `js/drive.js` | Drive API: list, read, upload |
+| `js/meta.js` | Tag and audio-format parser |
+| `js/library.js` | Folder scan → albums, songs, artists |
+| `js/lyrics.js` | LRC / SYLT lyrics and syncing |
+| `js/covers.js` | Cover loading and color extraction |
+| `js/player.js` | Playback, queue, shuffle, repeat, lock screen |
+| `js/settings.js`, `js/store.js` | Settings and on-device cache |
+| `sw.js` | Streaming with seek support, offline app shell |
