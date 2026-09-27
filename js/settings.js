@@ -8,6 +8,7 @@ const DEFAULTS = {
   dynamicColor: true,    // tint screens from album art
   showTech: true,        // "FLAC · 96 kHz · 24-bit" line on Now Playing
   lyricsPreview: true,   // current lyric line on Now Playing
+  onlineLookup: false,   // LRCLIB lyrics / iTunes covers for missing ones
   volume: 100,
 };
 

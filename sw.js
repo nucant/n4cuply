@@ -2,7 +2,7 @@
 // 1) Caches the app files so it opens fast (and offline).
 // 2) Forwards "stream/<fileId>" requests to Drive with the token, so songs
 //    start without a full download and seeking works.
-const CACHE = 'n4cuply-v8';
+const CACHE = 'n4cuply-v9';
 const SHELL = [
   './',
   'index.html',
@@ -19,6 +19,8 @@ const SHELL = [
   'js/lyrics.js',
   'js/settings.js',
   'js/sources.js',
+  'js/organize.js',
+  'js/online.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',

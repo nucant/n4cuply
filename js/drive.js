@@ -131,3 +131,13 @@ export async function uploadFile(file, parentId, account, onProgress, signal) {
     xhr.send(file);
   });
 }
+
+/** Replaces the content of an existing file (small files, e.g. JSON). */
+export async function updateFileContent(id, blob, account) {
+  const res = await request(withParams('/files/' + encodeURIComponent(id), { uploadType: 'media', fields: FILE_FIELDS, supportsAllDrives: 'true' }, UPLOAD_API), {
+    method: 'PATCH',
+    headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+    body: blob,
+  }, account);
+  return res.json();
+}

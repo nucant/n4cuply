@@ -603,3 +603,17 @@ select.set-input { appearance: auto; }
 @media (min-width: 900px) { .np-layout { display: grid; } }
 
 .login-tag { font-size: clamp(20px, 5vw, 26px); font-weight: 700; letter-spacing: -.03em; color: var(--text) !important; margin-top: -6px !important; }
+
+/* ---------- v1.4: organize ---------- */
+.org-progress { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, .06); font-size: 13.5px; color: var(--text-2); margin-top: 10px; }
+.org-item { display: grid; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.set-group h4 + .org-item { border-top: 0; }
+.org-choices { display: grid; gap: 4px; }
+.org-choice { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(0, 0, 0, .18); cursor: pointer; }
+.org-choice.static { grid-template-columns: 1fr; cursor: default; gap: 2px; }
+.org-choice input { accent-color: #fff; width: 18px; height: 18px; margin: 0; }
+.org-choice span { font-weight: 600; font-size: 14.5px; min-width: 0; overflow-wrap: anywhere; }
+.org-choice small { color: var(--text-2); font-size: 12.5px; }
+.org-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.text-btn.pad { display: block; margin: 12px auto 4px; }
+.set-buttons.center { justify-content: center; }

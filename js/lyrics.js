@@ -4,6 +4,8 @@
 //   2. ID3 SYLT (synced lyrics frame) in MP3s
 //   3. the lyrics tag (USLT / LYRICS / ©lyr), which may itself contain LRC timestamps
 import { first } from './meta.js';
+import { findLyrics } from './online.js';
+import { idbGet, idbPut } from './store.js';
 
 const TIME = /\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g;
 const WORD = /<(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)>/g;
@@ -66,11 +68,34 @@ const cache = new Map();
  * Resolves with { synced, lines, source } or null when the track has no lyrics.
  * loadText(fileId) must return the text of a Drive file.
  */
-export function lyricsFor(track, loadText) {
+export function lyricsFor(track, loadText, { online = false } = {}) {
   if (!track) return Promise.resolve(null);
-  const key = `${track.id}:${track.lrcId || ''}:${track.meta?.v || 0}`;
-  if (!cache.has(key)) cache.set(key, find(track, loadText).catch(() => null));
+  const key = `${track.id}:${track.lrcId || ''}:${track.meta?.v || 0}:${online}`;
+  if (!cache.has(key)) {
+    cache.set(key, find(track, loadText)
+      .catch(() => null)
+      .then((found) => (found || !online ? found : fromOnline(track))));
+  }
   return cache.get(key);
+}
+
+const ONLINE_RETRY = 7 * 24 * 3600e3; // don't ask again for a week after "not found"
+
+async function fromOnline(track) {
+  const key = `online:${track.id}`;
+  let hit = await idbGet('lyrics', key);
+  if (!hit || (hit.none && Date.now() - hit.at > ONLINE_RETRY)) {
+    try {
+      const ly = await findLyrics(track);
+      hit = ly ? { text: ly.text, at: Date.now() } : { none: true, at: Date.now() };
+      idbPut('lyrics', key, hit);
+    } catch (e) {
+      return null;
+    }
+  }
+  if (!hit || hit.none) return null;
+  const parsed = parseLrc(hit.text);
+  return { ...parsed, source: 'LRCLIB (online, not saved yet)', online: true, rawText: hit.text };
 }
 
 async function find(track, loadText) {

@@ -1,7 +1,7 @@
 // Small on-device database (IndexedDB) for song metadata and cover images.
 // If IndexedDB is unavailable, every function quietly does nothing.
 const DB_NAME = 'my-player';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let dbPromise = null;
 
 function open() {
@@ -14,6 +14,7 @@ function open() {
           if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
           if (!db.objectStoreNames.contains('covers')) db.createObjectStore('covers');
           if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+          if (!db.objectStoreNames.contains('lyrics')) db.createObjectStore('lyrics');
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => resolve(null);

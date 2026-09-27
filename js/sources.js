@@ -3,7 +3,7 @@
 // Also the one place that knows how to read a file from either kind.
 import { CONFIG } from '../config.js';
 import { accessToken, primaryAccount } from './auth.js';
-import { fetchBlob, fetchRange } from './drive.js';
+import { fetchBlob, fetchRange, uploadFile } from './drive.js';
 import { idbGet, idbPut, idbDelete } from './store.js';
 import { settings } from './settings.js';
 
@@ -189,3 +189,40 @@ export function playTarget(track) {
   return { mode: 'blob', blob };
 }
 
+
+// ---------------------------------------------------------------- saving into folders
+/** Asks (from a click) for permission to add files to a PC folder. */
+export async function requestLocalWrite(srcId) {
+  const h = await localHandle(srcId);
+  if (!h) return false;
+  if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') return true;
+  return (await h.requestPermission({ mode: 'readwrite' })) === 'granted';
+}
+
+async function localDir(folderId) {
+  const [, srcId, ...rest] = folderId.split(':');
+  const rel = rest.join(':');
+  let dir = await localHandle(srcId);
+  if (!dir) throw new Error('This PC folder was removed.');
+  if (rel && rel !== '.') for (const part of rel.split('/')) dir = await dir.getDirectoryHandle(part);
+  return dir;
+}
+
+/**
+ * Saves a file (lyrics, cover) into a library folder, on Drive or on this PC.
+ * Drive needs upload permission; PC folders need requestLocalWrite() first.
+ */
+export async function saveToFolder(folderId, srcId, name, blob) {
+  const src = sourceById(srcId);
+  if (!src) throw new Error('Unknown source.');
+  if (src.kind === 'local') {
+    const dir = await localDir(folderId);
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(blob);
+    await w.close();
+    return;
+  }
+  const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+  await uploadFile(file, folderId, accountOf(src));
+}

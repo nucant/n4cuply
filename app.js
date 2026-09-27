@@ -1,14 +1,18 @@
 import {
   initAuth, hasToken, canWrite, expiresSoon, signIn, signOut, primaryAccount, accountName, knownAccounts,
 } from './js/auth.js';
-import { AuthError, uploadFile, createFolder, getFolder } from './js/drive.js';
+import { AuthError, uploadFile, createFolder, getFolder, updateFileContent } from './js/drive.js';
 import {
   scanSource, loadScanCache, clearCache, loadMetaCache, missingMeta, readMissingMeta, build, refFor, LocalPermissionError,
 } from './js/library.js';
 import {
   listSources, sourceById, accountOf, addDriveSource, addLocalSource, removeSource, canAddSource, MAX_EXTRA,
-  localSupported, localPermission, requestLocal, readBlob,
+  localSupported, localPermission, requestLocal, readBlob, saveToFolder, requestLocalWrite,
 } from './js/sources.js';
+import {
+  analyze, mergeArtists, mergeAlbums, ignore, resetRules, getRules, adoptRules, onRulesChange, RULES_FILE,
+} from './js/organize.js';
+import { findLyrics, findCover } from './js/online.js';
 import { first, techLine, qualityBadge, qualityTag } from './js/meta.js';
 import { loadCover, peekCover, applyTint } from './js/covers.js';
 import { lyricsFor, activeLine } from './js/lyrics.js';
@@ -16,7 +20,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -39,6 +43,7 @@ const ICON = {
   upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>',
   drive: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5h7l6 10.5-3.5 6h-12L2.5 14z"/><path d="M8.5 3.5l6.5 10.5h6.5M2.5 14h13l-3.5 6"/></svg>',
   pc: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  wand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20L15 9M14 4v3M19 9h3M17.5 5.5l2-2M12 6.5l1.5 1.5M16 11l1.5 1.5"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -205,7 +210,10 @@ async function refreshLibrary({ quiet = false, only = '' } = {}) {
   }
   scanning = false;
   render();
-  if (hasScans()) runMetaScan();
+  if (hasScans()) {
+    pullRules();
+    runMetaScan();
+  }
 }
 
 let rebuildTimer = 0;
@@ -403,6 +411,7 @@ function renderHome(tab) {
         <button class="pill-btn light" type="button" data-action="play-list" data-list="all">${ICON.play}<span>Play all</span></button>
         <button class="pill-btn" type="button" data-action="shuffle-list" data-list="all">${ICON.shuffle}<span>Shuffle</span></button>
         <button class="pill-btn" type="button" data-action="upload">${ICON.upload}<span>Upload</span></button>
+        <button class="pill-btn" type="button" data-action="organize">${ICON.wand}<span>Organize</span></button>
       </div>
       ${scanBarHtml()}
     </section>`;
@@ -643,13 +652,13 @@ function updatePlayerUi() {
     badge.innerHTML = '';
   }
 
-  const lyricKey = `${t.id}:${t.lrcId}:${t.meta?.v || 0}`;
+  const lyricKey = `${t.id}:${t.lrcId}:${t.meta?.v || 0}:${settings.onlineLookup}`;
   if (lyricsTrackId !== lyricKey) {
     lyricsTrackId = lyricKey;
     currentLyrics = null;
     lastLyricIdx = -2;
     updateLyricPreview();
-    lyricsFor(t, loadText).then((ly) => {
+    lyricsFor(t, loadText, { online: settings.onlineLookup }).then((ly) => {
       if (lyricsTrackId !== lyricKey) return;
       currentLyrics = ly;
       lastLyricIdx = -2;
@@ -830,15 +839,35 @@ function openLyrics(push = true) {
       <p class="ly" data-i="${i}" data-t="${l.t}" role="button" tabindex="0">${l.words
         ? l.words.map((w) => `<span class="w" data-t="${w.t ?? l.t}">${esc(w.text)}</span>`).join('')
         : (esc(l.text) || '<span class="ly-gap">♪</span>')}</p>`).join('')}
-      </div><p class="ly-source">Synced · ${esc(ly.source)} · tap a line to jump to it</p>`;
+      </div><p class="ly-source">Synced · ${esc(ly.source)} · tap a line to jump to it</p>${saveLyricsButton(ly)}`;
   } else {
     html = `<div class="lyrics">${esc(ly.lines.map((l) => l.text).join('\n').trim())}</div>
-      <p class="ly-source">Not synced · ${esc(ly.source)}. Use an .lrc file with timestamps to sync.</p>`;
+      <p class="ly-source">Not synced · ${esc(ly.source)}. Use an .lrc file with timestamps to sync.</p>${saveLyricsButton(ly)}`;
   }
   openSheet('lyrics', t.title, html, push);
   $('#sheet').classList.add('lyrics-sheet');
   lastLyricIdx = -2;
   syncLyrics(player.audio.currentTime || 0);
+}
+
+function saveLyricsButton(ly) {
+  return ly.online ? '<div class="set-buttons center"><button class="pill-btn small" type="button" data-action="save-lyrics">Save these lyrics to my folder</button></div>' : '';
+}
+
+async function saveCurrentLyrics(btn) {
+  const t = player.current();
+  if (!t || !currentLyrics?.online) return;
+  btn.disabled = true;
+  try {
+    const blocked = await allowSaving([t.src]);
+    if (blocked.size) throw new Error('Saving was not allowed.');
+    await saveToFolder(t.folderId, t.src, t.file.replace(/\.[^.]+$/, '') + '.lrc', new Blob([currentLyrics.rawText], { type: 'text/plain' }));
+    toast('Saved as a .lrc file next to the song.');
+    refreshLibrary({ quiet: true, only: t.src });
+  } catch (e) {
+    toast(e.message || "Couldn't save the lyrics.");
+    btn.disabled = false;
+  }
 }
 
 // ================= sheet =================
@@ -1054,6 +1083,7 @@ async function openSettings(push = true) {
       <div class="set-buttons">
         <button class="pill-btn small" type="button" data-set-action="refresh">Refresh all</button>
         <button class="pill-btn small" type="button" data-set-action="rescan">Re-read all song info</button>
+        <button class="pill-btn small" type="button" data-set-action="organize">${ICON.wand}<span>Organize library</span></button>
       </div>
     </div>
 
@@ -1147,6 +1177,7 @@ function onSettingsEvent(e) {
   if (act === 'refresh') { withAuth(() => refreshLibrary()); toast('Refreshing your library…'); }
   if (act === 'rescan') withAuth(() => { resetLibrary(); closeSheet(); refreshLibrary(); });
   if (act === 'upload') openUpload(undefined, false);
+  if (act === 'reset-rules') { resetRules(); toast('All merges undone.'); openSettings(false); }
   if (act === 'clear') { resetLibrary(); closeSheet(); toast('Cleared. Song info will be read again.'); withAuth(() => refreshLibrary()); }
   if (act === 'allow') allowLocal(e.target.closest('[data-src]').dataset.src).then(() => openSettings(false));
   if (act === 'connect') reconnect(e.target.closest('[data-account]').dataset.account).then(() => openSettings(false));
@@ -1161,6 +1192,7 @@ function onSettingsEvent(e) {
     toast('Source removed. Its files are untouched.');
   }
   if (act === 'add-local') addLocal();
+  if (act === 'organize') openOrganize(false);
   if (act === 'folder-reset') { setSetting('folderId', ''); switchFolder(); }
   if (act === 'install' && installPrompt) { installPrompt.prompt(); installPrompt = null; openSettings(false); }
   if (act === 'logout') logout();
@@ -1408,6 +1440,223 @@ function wireDragDrop() {
   });
 }
 
+// ================= organize =================
+const hasLyrics = (t) => !!(t.lrcId || first(t.meta, 'LYRICS') || t.meta?.syncedLyrics?.length);
+const org = { busy: false, log: '', done: 0, total: 0 };
+
+function openOrganize(push = true) {
+  if (!lib) return;
+  const res = analyze(lib, hasLyrics);
+  const issues = res.artists.length + res.albums.length;
+  const online = settings.onlineLookup;
+  const busy = org.busy;
+  const synced = scans.default?.rulesFileId ? 'Fixes are saved to your Drive and sync to your other devices.' : 'Fixes are saved on this device, and to your Drive once upload permission is allowed.';
+  const html = `
+    <p class="info-note first">${issues ? `${plural(issues, 'thing')} to tidy up` : 'Artists and albums look tidy.'} · ${plural(res.noCover.length, 'album')} without a cover · ${plural(res.noLyrics.length, 'song')} without lyrics</p>
+    <div class="set-buttons">
+      <button class="pill-btn light" type="button" data-org="fix-all" ${busy ? 'disabled' : ''}>${ICON.wand}<span>Fix everything</span></button>
+    </div>
+    ${org.log || busy ? `<div class="org-progress"><span id="org-log">${esc(org.log)}</span><div class="scan-bar"><i id="org-bar" style="width:${org.total ? (org.done / org.total) * 100 : 0}%"></i></div></div>` : ''}
+
+    <div class="info-group set-group">
+      ${toggleRow('onlineLookup', 'Find missing lyrics and covers online', 'Uses LRCLIB for lyrics and Apple iTunes for covers. Only artist, song and album names are sent. Results are saved into your folders.')}
+    </div>
+
+    ${res.artists.length ? `<div class="info-group set-group"><h4>Same artist?</h4>
+      ${res.artists.map((g) => `<div class="org-item" data-group="${esc(g.id)}">
+        <div class="org-choices">${g.names.map((n) => `<label class="org-choice"><input type="radio" name="${esc(g.id)}" value="${esc(n.name)}" ${n.name === g.canonical ? 'checked' : ''}><span>${esc(n.name)}</span><small>${plural(n.count, 'song')}</small></label>`).join('')}</div>
+        <div class="org-actions"><button class="pill-btn small light" type="button" data-org="merge-artist">Merge into selected</button><button class="pill-btn small" type="button" data-org="ignore">Not the same</button></div>
+      </div>`).join('')}</div>` : ''}
+
+    ${res.albums.length ? `<div class="info-group set-group"><h4>Split albums</h4>
+      ${res.albums.map((g) => `<div class="org-item" data-group="${esc(g.id)}" data-keys="${esc(g.albums.map((a) => a.key).join('\n'))}" data-target="${esc(g.target)}">
+        <div class="org-choices">${g.albums.map((a) => `<div class="org-choice static"><span>${esc(a.name)}</span><small>${esc(a.artist || '')} · ${plural(a.tracks.length, 'song')} · ${esc(a.tracks[0].path)}</small></div>`).join('')}</div>
+        <div class="org-actions"><button class="pill-btn small light" type="button" data-org="merge-album">Merge</button><button class="pill-btn small" type="button" data-org="ignore">Keep separate</button></div>
+      </div>`).join('')}</div>` : ''}
+
+    <div class="info-group set-group"><h4>Covers</h4>
+      <div class="set-row"><span><b>${plural(res.noCover.length, 'album')} without a cover</b><small>${res.noCover.slice(0, 4).map((a) => esc(a.name)).join(', ')}${res.noCover.length > 4 ? '…' : ''}${res.noCover.length ? '' : 'All albums have covers.'}</small></span>
+      <button class="pill-btn small" type="button" data-org="covers" ${!res.noCover.length || !online || busy ? 'disabled' : ''}>Find</button></div>
+    </div>
+    <div class="info-group set-group"><h4>Lyrics</h4>
+      <div class="set-row"><span><b>${plural(res.noLyrics.length, 'song')} without lyrics</b><small>Found lyrics are saved as a .lrc file next to each song (synced when available).</small></span>
+      <button class="pill-btn small" type="button" data-org="lyrics" ${!res.noLyrics.length || !online || busy ? 'disabled' : ''}>Find</button></div>
+    </div>
+    ${online ? '' : '<p class="info-note">Turn on "Find missing lyrics and covers online" to fill in covers and lyrics.</p>'}
+    <p class="info-note">${esc(synced)}</p>
+    <button class="text-btn pad" type="button" data-org="undo">Undo all merges</button>`;
+  openSheet('organize', 'Organize library', html, push);
+}
+
+function orgProgress(text, done, total) {
+  org.log = text;
+  org.done = done;
+  org.total = total;
+  const log = $('#org-log');
+  const bar = $('#org-bar');
+  if (log) log.textContent = text;
+  if (bar) bar.style.width = `${total ? (done / total) * 100 : 0}%`;
+  if (!log && sheetKind === 'organize') openOrganize(false);
+}
+
+/** Gets every permission needed to save into these sources. Call from a click. */
+async function allowSaving(srcIds) {
+  const blocked = new Set();
+  for (const id of new Set(srcIds)) {
+    const src = sourceById(id);
+    if (!src) continue;
+    try {
+      if (src.kind === 'local') {
+        if (!(await requestLocalWrite(id))) blocked.add(id);
+      } else {
+        const account = accountOf(src);
+        if (!canWrite(account) || expiresSoon(account)) await signIn({ write: true, account });
+      }
+    } catch (e) {
+      blocked.add(id);
+    }
+  }
+  return blocked;
+}
+
+async function findCovers(albums) {
+  const blocked = await allowSaving(albums.map((a) => a.src));
+  const touched = new Set();
+  let found = 0;
+  for (let i = 0; i < albums.length; i++) {
+    const a = albums[i];
+    orgProgress(`Covers: ${a.name}`, i, albums.length);
+    if (blocked.has(a.src)) continue;
+    try {
+      const blob = await findCover(a);
+      if (!blob) continue;
+      await saveToFolder(a.folderId, a.src, 'cover.jpg', blob);
+      touched.add(a.src);
+      found++;
+    } catch (e) { /* skip this album */ }
+  }
+  orgProgress(`Covers: found ${found} of ${albums.length}.${blocked.size ? ' Some folders were not allowed.' : ''}`, albums.length, albums.length);
+  return touched;
+}
+
+async function findAllLyrics(tracks) {
+  const blocked = await allowSaving(tracks.map((t) => t.src));
+  const touched = new Set();
+  let found = 0;
+  let i = 0;
+  const worker = async () => {
+    while (i < tracks.length) {
+      const t = tracks[i++];
+      orgProgress(`Lyrics: ${t.title}`, i, tracks.length);
+      if (blocked.has(t.src)) continue;
+      try {
+        const ly = await findLyrics(t);
+        if (!ly) continue;
+        const name = t.file.replace(/\.[^.]+$/, '') + '.lrc';
+        await saveToFolder(t.folderId, t.src, name, new Blob([ly.text], { type: 'text/plain' }));
+        touched.add(t.src);
+        found++;
+      } catch (e) { /* skip this song */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  orgProgress(`Lyrics: found ${found} of ${tracks.length}.${blocked.size ? ' Some folders were not allowed.' : ''}`, tracks.length, tracks.length);
+  return touched;
+}
+
+async function runOrganize(kind) {
+  if (org.busy || !lib) return;
+  org.busy = true;
+  openOrganize(false);
+  const touched = new Set();
+  try {
+    const res = analyze(lib, hasLyrics);
+    if (kind === 'all') {
+      for (const g of res.artists) mergeArtists(g.names.map((n) => n.name), g.canonical);
+      for (const g of res.albums) mergeAlbums(g.albums.map((a) => a.key), g.target);
+      orgProgress(`Merged ${plural(res.artists.length, 'artist group')} and ${plural(res.albums.length, 'album')}.`, 1, 1);
+    }
+    if (settings.onlineLookup && (kind === 'all' || kind === 'covers')) {
+      const fresh = analyze(lib, hasLyrics).noCover;
+      if (fresh.length) for (const id of await findCovers(fresh)) touched.add(id);
+    }
+    if (settings.onlineLookup && (kind === 'all' || kind === 'lyrics')) {
+      const fresh = analyze(lib, hasLyrics).noLyrics;
+      if (fresh.length) for (const id of await findAllLyrics(fresh)) touched.add(id);
+    }
+  } finally {
+    org.busy = false;
+  }
+  for (const id of touched) await refreshLibrary({ quiet: true, only: id });
+  if (sheetKind === 'organize') openOrganize(false);
+}
+
+function onOrganizeEvent(e) {
+  if (sheetKind !== 'organize') return;
+  const sw = e.target.closest('[data-set]');
+  if (sw && e.type === 'change') {
+    setSetting(sw.dataset.set, sw.checked);
+    openOrganize(false);
+    return;
+  }
+  if (e.type !== 'click') return;
+  const btn = e.target.closest('[data-org]');
+  if (!btn || btn.disabled) return;
+  const act = btn.dataset.org;
+  const item = btn.closest('.org-item');
+  if (act === 'merge-artist') {
+    const names = [...item.querySelectorAll('input[type=radio]')].map((r) => r.value);
+    const canonical = item.querySelector('input[type=radio]:checked')?.value || names[0];
+    mergeArtists(names, canonical);
+    toast(`Merged into "${canonical}".`);
+  } else if (act === 'merge-album') {
+    mergeAlbums(item.dataset.keys.split('\n'), item.dataset.target);
+    toast('Albums merged.');
+  } else if (act === 'ignore') {
+    ignore(item.dataset.group);
+  } else if (act === 'undo') {
+    resetRules();
+    toast('All merges undone.');
+  } else if (act === 'fix-all') {
+    runOrganize('all');
+    return;
+  } else if (act === 'covers' || act === 'lyrics') {
+    runOrganize(act);
+    return;
+  }
+  openOrganize(false);
+}
+
+// Rules changed: rebuild now, save to Drive shortly after.
+let rulesTimer = 0;
+onRulesChange(() => {
+  rebuild();
+  render();
+  clearTimeout(rulesTimer);
+  rulesTimer = setTimeout(pushRules, 1500);
+});
+
+async function pushRules() {
+  const scan = scans.default;
+  const account = primaryAccount();
+  if (!scan || !canWrite(account)) return;
+  const blob = new Blob([JSON.stringify(getRules(), null, 1)], { type: 'application/json' });
+  try {
+    if (scan.rulesFileId) await updateFileContent(scan.rulesFileId, blob, account);
+    else scan.rulesFileId = (await uploadFile(new File([blob], RULES_FILE, { type: 'application/json' }), scan.rootId, account)).id || '';
+  } catch (e) { /* stays saved on this device; next change retries */ }
+}
+
+async function pullRules() {
+  const scan = scans.default;
+  if (!scan?.rulesFileId) return;
+  try {
+    const remote = JSON.parse(await (await readBlob({ id: scan.rulesFileId, src: 'default' })).text());
+    if (adoptRules(remote)) { rebuild(); render(); }
+    else if (getRules().updatedAt > (remote.updatedAt || 0)) pushRules();
+  } catch (e) { /* ignore a broken or missing file */ }
+}
+
 // ================= events =================
 function wireStaticUi() {
   $('#connect').addEventListener('click', connect);
@@ -1428,8 +1677,10 @@ function wireStaticUi() {
     else if (action === 'allow-local') allowLocal(el.dataset.src);
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
+    else if (action === 'organize') openOrganize();
     else if (action === 'upload') openUpload(el.dataset.folder || undefined);
     else if (action === 'jump') withAuth(() => player.jumpTo(Number(el.dataset.pos)));
+    else if (action === 'save-lyrics') saveCurrentLyrics(el);
   };
   $('#main').addEventListener('click', onAction);
   const body = $('#sheet-body');
@@ -1438,6 +1689,8 @@ function wireStaticUi() {
   body.addEventListener('change', onSettingsEvent);
   body.addEventListener('submit', onSettingsSubmit);
   body.addEventListener('click', onUploadEvent);
+  body.addEventListener('click', onOrganizeEvent);
+  body.addEventListener('change', onOrganizeEvent);
   body.addEventListener('change', onUploadEvent);
   body.addEventListener('click', (e) => {
     const line = e.target.closest('.ly');
