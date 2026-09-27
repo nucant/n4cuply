@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Private Player Blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --paper: #103c6e;
+    --paper-deep: #0b2d55;
+    --paper-lift: #164a82;
+    --line: #dbe9ff;
+    --line-dim: rgba(219, 233, 255, .62);
+    --line-faint: rgba(219, 233, 255, .28);
+    --grid: rgba(219, 233, 255, .06);
+    --grid-major: rgba(219, 233, 255, .11);
+    --cyan: #8fd8ff;
+    --amber: #ffd479;
+    --coral: #ff9f8c;
+    --mint: #9ff0c4;
+    --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+    --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid-major) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+    color: var(--line);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.6;
+    padding-inline: 16px;
+    padding-block: 32px 64px;
+  }
+  .sheet {
+    max-width: 1080px;
+    margin-inline: auto;
+    border: 1.5px solid var(--line);
+    outline: 1px solid var(--line-faint);
+    outline-offset: 6px;
+    background: rgba(11, 45, 85, .35);
+  }
+  /* ---------- title block ---------- */
+  .head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    border-bottom: 1.5px solid var(--line);
+  }
+  .head-main { padding: 28px 28px 24px; display: grid; gap: 10px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(40px, 7vw, 72px);
+    line-height: .95;
+    letter-spacing: .01em;
+    text-transform: uppercase;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .lede { margin: 0; max-width: 62ch; color: var(--line-dim); font-size: 16px; }
+  .tblock {
+    border-left: 1.5px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    display: grid;
+    grid-template-columns: auto auto;
+    align-content: stretch;
+    min-width: 260px;
+  }
+  .tblock div { padding: 8px 14px; border-bottom: 1px solid var(--line-faint); }
+  .tblock div:nth-child(odd) { color: var(--line-dim); letter-spacing: .1em; text-transform: uppercase; border-right: 1px solid var(--line-faint); }
+  .tblock div:nth-last-child(-n+2) { border-bottom: 0; }
+  @media (max-width: 720px) {
+    .head { grid-template-columns: 1fr; }
+    .tblock { border-left: 0; border-top: 1.5px solid var(--line); min-width: 0; }
+  }
+
+  /* ---------- sections ---------- */
+  section { padding: 32px 28px; border-bottom: 1px solid var(--line-faint); display: grid; gap: 20px; }
+  section:last-of-type { border-bottom: 0; }
+  .sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+  .ref {
+    font-family: var(--mono);
+    font-size: 12px;
+    border: 1px solid var(--line);
+    padding: 2px 8px;
+    letter-spacing: .08em;
+  }
+  h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 30px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    margin: 0;
+    line-height: 1.1;
+  }
+  .sec-note { font-family: var(--mono); font-size: 12px; color: var(--line-dim); }
+  h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 20px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  p { margin: 0; max-width: 68ch; }
+  .dim { color: var(--line-dim); }
+  code, .mono { font-family: var(--mono); font-size: .88em; }
+  code { color: var(--cyan); }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .box {
+    border: 1px dashed var(--line-dim);
+    padding: 16px 18px;
+    display: grid;
+    gap: 8px;
+    align-content: start;
+  }
+  .box.solid { border-style: solid; border-color: var(--line); }
+  .box.amber { border-color: var(--amber); }
+  .box.amber h3, .amber-t { color: var(--amber); }
+  .box.coral { border-color: var(--coral); }
+  .box.coral h3 { color: var(--coral); }
+  .box.mint { border-color: var(--mint); }
+  .box.mint h3 { color: var(--mint); }
+
+  ul.ticks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  ul.ticks li { padding-left: 22px; position: relative; }
+  ul.ticks li::before {
+    content: "";
+    position: absolute; left: 2px; top: .62em;
+    width: 10px; height: 1.5px; background: var(--cyan);
+  }
+  ul.ticks.no li::before { background: var(--coral); }
+  ul.ticks.yes li::before { background: var(--mint); }
+
+  /* ---------- diagram ---------- */
+  .diagram { overflow-x: auto; border: 1px solid var(--line-faint); background: rgba(11, 45, 85, .5); }
+  .diagram svg { display: block; min-width: 860px; width: 100%; height: auto; }
+  .diagram-caption { font-family: var(--mono); font-size: 12px; color: var(--line-dim); }
+
+  /* ---------- flow (arrow chain) ---------- */
+  .flow { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px 0; }
+  .flow li { display: flex; align-items: stretch; }
+  .step {
+    border: 1px solid var(--line);
+    padding: 12px 14px;
+    width: 158px;
+    display: grid;
+    gap: 4px;
+    align-content: start;
+    background: rgba(16, 60, 110, .7);
+  }
+  .step .n { font-family: var(--mono); font-size: 11px; color: var(--cyan); letter-spacing: .1em; }
+  .step b { font-family: var(--display); font-size: 18px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; line-height: 1.1; }
+  .step span { font-size: 13px; color: var(--line-dim); line-height: 1.45; }
+  .arrow { width: 36px; display: grid; place-items: center; flex: none; }
+  .arrow svg { width: 32px; height: 14px; }
+  @media (max-width: 560px) {
+    .flow { flex-direction: column; }
+    .flow li { flex-direction: column; align-items: stretch; }
+    .step { width: 100%; }
+    .arrow { width: 100%; height: 30px; }
+    .arrow svg { transform: rotate(90deg); }
+  }
+
+  /* ---------- phases (vertical blueprint) ---------- */
+  .phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .phase { display: grid; grid-template-columns: 92px 1fr; gap: 0 20px; }
+  .phase-rail { display: grid; grid-template-rows: auto 1fr; justify-items: center; }
+  .phase-tag {
+    font-family: var(--display); font-weight: 700; font-size: 26px;
+    width: 76px; height: 56px; display: grid; place-items: center;
+    border: 1.5px solid var(--line);
+    background: var(--paper);
+  }
+  .phase-line { width: 0; border-left: 1.5px solid var(--line-dim); position: relative; min-height: 32px; }
+  .phase-line::after {
+    content: ""; position: absolute; bottom: -1px; left: -7px;
+    border-left: 6.25px solid transparent; border-right: 6.25px solid transparent;
+    border-top: 10px solid var(--line-dim);
+  }
+  .phase:last-child .phase-line { display: none; }
+  .phase-body { padding-bottom: 28px; display: grid; gap: 8px; }
+  .phase-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .who {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    padding: 2px 8px; border: 1px solid currentColor;
+  }
+  .who.you { color: var(--amber); }
+  .who.me { color: var(--cyan); }
+  .who.both { color: var(--mint); }
+  .time { font-family: var(--mono); font-size: 12px; color: var(--line-dim); }
+  @media (max-width: 560px) {
+    .phase { grid-template-columns: 60px 1fr; gap: 0 12px; }
+    .phase-tag { width: 52px; height: 44px; font-size: 20px; }
+  }
+
+  /* ---------- tables ---------- */
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border: 1px solid var(--line-faint); }
+  th { font-family: var(--mono); font-size: 11.5px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--cyan); background: rgba(11, 45, 85, .6); }
+  td:first-child { white-space: nowrap; }
+  .pill { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border: 1px solid currentColor; letter-spacing: .06em; white-space: nowrap; }
+  .pill.good { color: var(--mint); }
+  .pill.mid { color: var(--amber); }
+
+  .filetree {
+    font-family: var(--mono); font-size: 13px; line-height: 1.75;
+    border: 1px solid var(--line-faint); padding: 14px 18px; margin: 0;
+    overflow-x: auto; background: rgba(11, 45, 85, .5); white-space: pre;
+  }
+  .filetree .c { color: var(--line-dim); }
+
+  .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .checklist li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; }
+  .checklist li::before { content: ""; width: 16px; height: 16px; border: 1.5px solid var(--amber); margin-top: 3px; }
+
+  .foot {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px;
+    padding: 14px 28px; border-top: 1.5px solid var(--line);
+    font-family: var(--mono); font-size: 11.5px; color: var(--line-dim); letter-spacing: .06em;
+  }
+  @media (max-width: 560px) {
+    section { padding: 26px 18px; }
+    .head-main { padding: 22px 18px; }
+    .foot { padding: 14px 18px; }
+  }
+
+  /* ---------- progress tracker ---------- */
+  .tracker { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line-faint); }
+  .tracker li { display: grid; grid-template-columns: 128px 1fr auto; gap: 6px 16px; align-items: baseline; padding: 11px 14px; border-bottom: 1px solid var(--line-faint); }
+  .tracker li:last-child { border-bottom: 0; }
+  .tracker li.now { background: rgba(255, 212, 121, .08); outline: 1px solid var(--amber); outline-offset: -1px; }
+  .tracker .what b { font-weight: 600; }
+  .tracker .what span { display: block; font-size: 13px; color: var(--line-dim); }
+  .tracker .when { font-family: var(--mono); font-size: 11.5px; color: var(--line-dim); white-space: nowrap; }
+  .st { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border: 1px solid currentColor; justify-self: start; white-space: nowrap; }
+  .st.done { color: var(--mint); }
+  .st.now { color: var(--amber); }
+  .st.wait { color: var(--cyan); }
+  .st.plan { color: var(--line-dim); border-style: dashed; }
+  .st.drop { color: var(--coral); }
+  .tracker-sub { font-family: var(--display); font-size: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--line-dim); margin: 0; }
+  @media (max-width: 560px) {
+    .tracker li { grid-template-columns: 1fr auto; }
+    .tracker .what { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+
+<main class="sheet">
+  <header class="head">
+    <div class="head-main">
+      <div class="eyebrow">Project blueprint · Nijer gaan, nijer player</div>
+      <h1>Private Player</h1>
+      <p class="lede">Spotify-r moto ekta music app. Ekhon gaan chalabe tomar Google Drive theke, pCloud approve hole pCloud theke. Project thakbe GitHub-e, code-e kono password thakbe na, aar tomar login chara keu kichu shunte parbe na.</p>
+    </div>
+    <div class="tblock" aria-label="Drawing details">
+      <div>Dwg no.</div><div>MP-001</div>
+      <div>Sheet</div><div>1 of 1</div>
+      <div>Rev</div><div>C · + tracker</div>
+      <div>Date</div><div>27 Sep 2026</div>
+      <div>Scale</div><div>NTS</div>
+      <div>Status</div><div class="amber-t">Step 3 · GitHub</div>
+    </div>
+  </header>
+
+  <!-- A0 PROGRESS -->
+  <section>
+    <div class="sec-head"><span class="ref">A0</span><h2>Progress tracker</h2><span class="sec-note">Ki holo, ki cholche, ki baki · last update 27 Sep 2026</span></div>
+    <p class="tracker-sub">Hoye geche</p>
+    <ul class="tracker">
+      <li><span class="st done">Done</span><div class="what"><b>Idea ar plan</b><span>Spotify-r moto private player, prothom blueprint (Rev A, pCloud)</span></div><span class="when">27 Sep</span></li>
+      <li><span class="st done">Done</span><div class="what"><b>Blueprint report</b><span>Tomar PC-te save: reports/blueprint.html</span></div><span class="when">27 Sep</span></li>
+      <li><span class="st done">Done</span><div class="what"><b>Decision: ekhon Google Drive</b><span>pCloud approval-er jonno wait na kore Drive diye shuru</span></div><span class="when">27 Sep</span></li>
+      <li><span class="st done">Done</span><div class="what"><b>Decision: project GitHub-e</b><span>App GitHub Pages-e live thakbe</span></div><span class="when">27 Sep</span></li>
+      <li><span class="st done">Done</span><div class="what"><b>Step 1 · Google Client ID</b><span>Project "My Player", Web client, origin http://localhost:8080 · ID ending …uuagis</span></div><span class="when">27 Sep</span></li>
+      <li><span class="st done">Done</span><div class="what"><b>Step 2 · Drive folder link</b><span>Folder ID …NDl33Wq, share setting Restricted (private)</span></div><span class="when">27 Sep</span></li>
+      <li><span class="st drop">Dropped</span><div class="what"><b>Apps Script version</b><span>Try korechilam, GitHub beche neyay bondho</span></div><span class="when">27 Sep</span></li>
+    </ul>
+    <p class="tracker-sub">Ekhon cholche</p>
+    <ul class="tracker">
+      <li class="now"><span class="st now">Tomar kaaj</span><div class="what"><b>Step 3 · GitHub username</b><span>Repo ar site-er link thik korar jonno</span></div><span class="when">Ekhon</span></li>
+      <li><span class="st wait">Waiting</span><div class="what"><b>pCloud app approval</b><span>Request submit, pCloud-er uttorer opekkhay</span></div><span class="when">pCloud</span></li>
+    </ul>
+    <p class="tracker-sub">Porer dhap (ek ek kore)</p>
+    <ul class="tracker">
+      <li><span class="st plan">Planned</span><div class="what"><b>P1 · Login + Library</b><span>Google login, folder scan, album list</span></div><span class="when">Ami</span></li>
+      <li><span class="st plan">Planned</span><div class="what"><b>P2 · Player engine</b><span>Play, queue, shuffle, repeat, lock screen control</span></div><span class="when">Ami</span></li>
+      <li><span class="st plan">Planned</span><div class="what"><b>P3 · Spotify-style UI + phone install</b><span>Home, album, search, now playing</span></div><span class="when">Ami</span></li>
+      <li><span class="st plan">Planned</span><div class="what"><b>P4 · GitHub-e live</b><span>Repo push, GitHub Pages on, phone-e test</span></div><span class="when">Tumi + Ami</span></li>
+      <li><span class="st plan">Planned</span><div class="what"><b>P5 · pCloud-e switch</b><span>Approval ashle</span></div><span class="when">Pore</span></li>
+    </ul>
+  </section>
+
+  <!-- A1 BRIEF -->
+  <section>
+    <div class="sec-head"><span class="ref">A1</span><h2>Brief &amp; rules</h2></div>
+    <div class="cols">
+      <div class="box solid">
+        <h3>Ki chai</h3>
+        <ul class="ticks">
+          <li>Nijer banano gaan phone ar PC-te shona</li>
+          <li>Spotify-r moto shundor player</li>
+          <li>Ekhon gaan Google Drive-e, pore pCloud-e</li>
+          <li>Project GitHub-e, kintu keu gaan access korte parbe na</li>
+        </ul>
+      </div>
+      <div class="box mint">
+        <h3>Design rules</h3>
+        <ul class="ticks yes">
+          <li>Kono server nei, kono database nei</li>
+          <li>App = shudhu HTML, CSS, JavaScript</li>
+          <li>Tala (lock) = Google login (pore pCloud login)</li>
+          <li>Gaan Drive theke sorasori device-e ashe</li>
+          <li>Drive ar pCloud dutoi plug-in, setting bodlalei switch</li>
+        </ul>
+      </div>
+      <div class="box coral">
+        <h3>Ja kokhono hobe na</h3>
+        <ul class="ticks no">
+          <li>Gaan GitHub-e upload</li>
+          <li>Password ba secret code-e likha</li>
+          <li>Drive folder "Anyone with link" public kora</li>
+          <li>Tomar Google password amar kache jawa</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- A2 WHY CLIENT ID -->
+  <section>
+    <div class="sec-head"><span class="ref">A2</span><h2>Folder link dile hobe na keno?</h2></div>
+    <div class="cols">
+      <div class="box coral">
+        <h3>Shudhu folder link</h3>
+        <p>Folder private thakle Google kauke dhukte dey na, amar app-keo na. Link diye cholate hole folder-ta "Anyone with the link" korte hobe. Tokhon je keu link pele tomar sob gaan shunte parbe.</p>
+      </div>
+      <div class="box mint">
+        <h3>Client ID diye</h3>
+        <p>Folder private-i thake. App khulle Google login ashe, tumi login korle tobei gaan dekha jay. Client ID holo app-er porichoy-potro, Google-ke bole "ei app ta tomar". Eta secret na, code-e thakleo kono khoti nei.</p>
+      </div>
+    </div>
+    <p class="dim">Client ID tomar nijer Google account theke banano, tai control-o tomar hate. Jokhon khushi Google Cloud theke bondho kore dite paro.</p>
+  </section>
+
+  <!-- A3 ARCHITECTURE -->
+  <section>
+    <div class="sec-head"><span class="ref">A3</span><h2>System diagram</h2><span class="sec-note">Ke kar sathe kotha bole</span></div>
+    <div class="diagram" role="img" aria-label="Architecture: GitHub repo deploys to GitHub Pages, which sends app code to your device. The device logs into Google, gets a token, asks the Drive API for the song list and song files, and songs come directly from your Drive music folder to the device.">
+      <svg viewBox="0 0 960 440" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#dbe9ff"/>
+          </marker>
+          <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#8fd8ff"/>
+          </marker>
+          <marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#ffd479"/>
+          </marker>
+        </defs>
+        <g fill="none" stroke="#dbe9ff" stroke-width="1.5">
+          <rect x="20" y="160" width="170" height="90" fill="#103c6e"/>
+          <rect x="280" y="40" width="190" height="90" fill="#103c6e"/>
+          <rect x="560" y="40" width="180" height="90" fill="#103c6e" stroke-dasharray="5 4"/>
+          <rect x="280" y="290" width="190" height="90" fill="#103c6e" stroke="#ffd479"/>
+          <rect x="560" y="160" width="180" height="90" fill="#103c6e" stroke="#ffd479"/>
+          <rect x="800" y="160" width="140" height="90" fill="#103c6e" stroke="#ffd479"/>
+          <rect x="266" y="146" width="686" height="248" stroke="#ffd479" stroke-opacity=".45" stroke-dasharray="2 5"/>
+        </g>
+        <g font-family="IBM Plex Mono, Consolas, monospace" font-size="11" fill="#ffd479" opacity=".85">
+          <text x="946" y="386" text-anchor="end">Google-er ghor (tomar account)</text>
+        </g>
+        <g font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="600" font-size="19" fill="#dbe9ff" text-anchor="middle" letter-spacing=".5">
+          <text x="105" y="198">TOMAR PHONE / PC</text>
+          <text x="375" y="78">PLAYER APP</text>
+          <text x="650" y="78">GITHUB REPO</text>
+          <text x="375" y="328" fill="#ffd479">GOOGLE LOGIN</text>
+          <text x="650" y="198" fill="#ffd479">DRIVE API</text>
+          <text x="870" y="198" fill="#ffd479">MUSIC FOLDER</text>
+        </g>
+        <g font-family="IBM Plex Mono, Consolas, monospace" font-size="11" fill="#dbe9ff" fill-opacity=".7" text-anchor="middle">
+          <text x="105" y="218">browser / installed app</text>
+          <text x="105" y="234">token thake ekhane</text>
+          <text x="375" y="98">GitHub Pages</text>
+          <text x="375" y="114">shudhu code, gaan nei</text>
+          <text x="650" y="98">tomar project</text>
+          <text x="650" y="114">kono secret nei</text>
+          <text x="375" y="348">official Google page</text>
+          <text x="375" y="364">password ekhanei dao</text>
+          <text x="650" y="218">files.list</text>
+          <text x="650" y="234">files.get (media)</text>
+          <text x="870" y="218">Drive/Music</text>
+          <text x="870" y="234">private folder</text>
+        </g>
+        <g fill="none" stroke-width="1.5">
+          <line x1="558" y1="85" x2="474" y2="85" stroke="#dbe9ff" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+          <line x1="280" y1="112" x2="194" y2="172" stroke="#dbe9ff" marker-end="url(#ah)"/>
+          <line x1="190" y1="226" x2="277" y2="303" stroke="#ffd479" marker-end="url(#aha)"/>
+          <line x1="280" y1="332" x2="178" y2="254" stroke="#ffd479" marker-end="url(#aha)"/>
+          <line x1="192" y1="190" x2="556" y2="190" stroke="#8fd8ff" marker-end="url(#ahc)"/>
+          <line x1="558" y1="222" x2="194" y2="222" stroke="#8fd8ff" marker-end="url(#ahc)"/>
+          <line x1="742" y1="205" x2="797" y2="205" stroke="#ffd479" marker-start="url(#aha)" marker-end="url(#aha)"/>
+          <path d="M870,252 L870,418 L105,418 L105,254" stroke="#9ff0c4" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+        </g>
+        <g font-family="IBM Plex Mono, Consolas, monospace" font-size="11.5">
+          <text x="516" y="76" fill="#dbe9ff" text-anchor="middle">auto deploy</text>
+          <text x="196" y="128" fill="#dbe9ff">0 · app load</text>
+          <text x="248" y="258" fill="#ffd479">1 · login</text>
+          <text x="150" y="300" fill="#ffd479">2 · token</text>
+          <text x="374" y="182" fill="#8fd8ff" text-anchor="middle">3 · gaaner list chao</text>
+          <text x="374" y="240" fill="#8fd8ff" text-anchor="middle">4 · gaaner file chao</text>
+          <text x="488" y="410" fill="#9ff0c4" text-anchor="middle">5 · gaan sorasori Google Drive theke tomar device-e ashe</text>
+        </g>
+      </svg>
+    </div>
+    <p class="diagram-caption">Holud = Google-er bhetore (tomar account). Sobuj dashed = ashol audio. GitHub kokhono gaan chhoy na. pCloud approve hole holud ongsho-ta shudhu pCloud diye bodle jabe.</p>
+  </section>
+
+  <!-- A4 USER FLOW -->
+  <section>
+    <div class="sec-head"><span class="ref">A4</span><h2>Tumi ki dekhbe</h2><span class="sec-note">App khola theke gaan shona porjonto</span></div>
+    <ol class="flow">
+      <li><div class="step"><span class="n">STEP 1</span><b>App kholo</b><span>GitHub Pages link ba home screen icon</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 2</span><b>Login screen</b><span>"Google diye login" button, ar kichu na</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 3</span><b>Google popup</b><span>Tomar account select koro, "Allow" dao</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 4</span><b>Library</b><span>Folder = album. Sob gaan list hoye jay</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 5</span><b>Play</b><span>Tap korlei shuru. Mini player niche thake</span></div><span class="arrow" aria-hidden="true"><svg viewBox="0 0 32 14"><path d="M0 7h28M22 1l7 6-7 6" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg></span></li>
+      <li><div class="step"><span class="n">STEP 6</span><b>Lock screen</b><span>Phone lock-eo gaan chole, headphone button kaaj kore</span></div></li>
+    </ol>
+    <p class="dim">Porer bar theke Google shudhu account confirm korte bolbe, password abar lagbe na.</p>
+  </section>
+
+  <!-- A5 SECURITY -->
+  <section>
+    <div class="sec-head"><span class="ref">A5</span><h2>Security</h2><span class="sec-note">Ke ki pabe</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ke</th><th>Ki korte parbe</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>Keu site-er link pelo</td><td>Shudhu login screen dekhbe. Tomar Google account chara aage jete parbe na.</td><td><span class="pill good">Safe</span></td></tr>
+          <tr><td>Keu GitHub-e code porlo</td><td>Shudhu player-er design ar logic. Kono gaan, password, token nei.</td><td><span class="pill good">Safe</span></td></tr>
+          <tr><td>Onno keu nijer Google diye login korlo</td><td>App "Testing" mode-e, shudhu tomar add kora email login korte pare. Oder Drive-e tomar gaan nei-o.</td><td><span class="pill good">Safe</span></td></tr>
+          <tr><td>Phone haralo</td><td>myaccount.google.com/permissions theke app-er access remove koro. App-e Logout button-o thakbe.</td><td><span class="pill mid">Tumi remove korbe</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="dim">App shudhu <b>read-only</b> permission chaibe. Drive-e kichu bodlate ba delete korte parbe na.</p>
+  </section>
+
+  <!-- A6 HOSTING -->
+  <section>
+    <div class="sec-head"><span class="ref">A6</span><h2>GitHub hosting</h2><span class="sec-note">App-ta kothay thakbe</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Option</th><th>Kivabe</th><th>Code ke dekhbe</th><th>Khoroch</th></tr></thead>
+        <tbody>
+          <tr><td><b>A · Recommended</b></td><td>GitHub <b>public</b> repo + GitHub Pages. Push korlei site update. Link: <code>username.github.io/my-player</code></td><td>Sobai (kintu secret nei, gaan safe)</td><td><span class="pill good">Free</span></td></tr>
+          <tr><td>B</td><td>GitHub <b>private</b> repo + Cloudflare Pages</td><td>Shudhu tumi</td><td><span class="pill good">Free</span></td></tr>
+          <tr><td>C</td><td>GitHub Pro, private repo + GitHub Pages</td><td>Shudhu tumi</td><td><span class="pill mid">$4 / mash</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="dim">Je option-i nao, gaan sobsomoy Google login-er pichone. Option shudhu thik kore code ke dekhte parbe. Site-er link-ta Google Client ID-er "Authorized JavaScript origins"-e boshate hobe.</p>
+  </section>
+
+  <!-- A7 FEATURES -->
+  <section>
+    <div class="sec-head"><span class="ref">A7</span><h2>Features</h2></div>
+    <div class="cols">
+      <div class="box solid">
+        <h3>Version 1</h3>
+        <ul class="ticks">
+          <li>Google login / logout</li>
+          <li>Library: folder = album, sub-folder support</li>
+          <li>Play, pause, next, previous, seek bar</li>
+          <li>Shuffle, repeat, queue</li>
+          <li>Search (gaan ba album-er naam)</li>
+          <li>Full-screen "Now Playing" + mini player</li>
+          <li>Lock screen ar headphone control</li>
+          <li>Phone-e app hisebe install (PWA)</li>
+          <li>Dark, Spotify-style design</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>Pore jog kora jabe</h3>
+        <ul class="ticks">
+          <li><b>pCloud source</b>, approve hole</li>
+          <li>Album art: folder-e <code>cover.jpg</code> rakhlei</li>
+          <li>Playlist</li>
+          <li>Lyrics: gaaner pashe <code>.lrc</code> file</li>
+          <li>Favourite gaan offline-e save</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- A8 BUILD PHASES -->
+  <section>
+    <div class="sec-head"><span class="ref">A8</span><h2>Build sequence</h2><span class="sec-note">Eta shesh hole tarpor oita</span></div>
+    <ol class="phases">
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">P0</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Setup</h3><span class="who you">Tumi</span><span class="time">~15 min</span></div>
+          <ul class="ticks">
+            <li>Google Drive-e gaaner folder, album onujayi sub-folder, tar <b>link</b></li>
+            <li>Google Cloud-e project, Drive API on, <b>Client ID</b> nao</li>
+            <li>GitHub account, username amake bolo</li>
+            <li>pCloud app request submit (parallel-e cholbe)</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">P1</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Login + Library</h3><span class="who me">Ami</span></div>
+          <ul class="ticks">
+            <li>Google login (read-only), token device-e</li>
+            <li>Folder scan, shudhu audio file rakha</li>
+            <li>Folder theke album ar track list</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">P2</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Player engine</h3><span class="who me">Ami</span></div>
+          <ul class="ticks">
+            <li>Drive theke gaan ene play, porer gaan aage theke load</li>
+            <li>Queue, shuffle, repeat, next / previous</li>
+            <li>Lock screen, headphone, notification control</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">P3</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>Spotify-style UI + PWA</h3><span class="who me">Ami</span></div>
+          <ul class="ticks">
+            <li>Home, album page, search, now playing, mini player</li>
+            <li>App icon, phone-e "Add to Home Screen"</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">P4</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>GitHub-e live</h3><span class="who both">Tumi + Ami</span></div>
+          <ul class="ticks">
+            <li>Ami git repo ready kori, tumi GitHub-e push koro (ami command diye debo)</li>
+            <li>GitHub Pages on</li>
+            <li>Site-er link Google Client ID-e boshao</li>
+            <li>Phone-e khule login, install, gaan test</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-rail"><div class="phase-tag">P5</div><div class="phase-line"></div></div>
+        <div class="phase-body">
+          <div class="phase-top"><h3>pCloud-e switch</h3><span class="who both">Pore</span></div>
+          <ul class="ticks">
+            <li>pCloud approve hole Client ID boshano, source = pCloud</li>
+            <li>Gaan pCloud-e thakbe, Drive theke delete korte paro</li>
+          </ul>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- A9 TECH -->
+  <section>
+    <div class="sec-head"><span class="ref">A9</span><h2>Technical detail</h2></div>
+    <div class="cols">
+      <div class="table-wrap">
+        <table style="min-width: 0">
+          <thead><tr><th>Google call</th><th>Kaaj</th></tr></thead>
+          <tbody>
+            <tr><td><code>Google Identity</code></td><td>Login popup, token dey</td></tr>
+            <tr><td><code>drive.readonly</code></td><td>Permission: shudhu pora</td></tr>
+            <tr><td><code>files.list</code></td><td>Folder-er bhetorer sob gaan</td></tr>
+            <tr><td><code>files.get ?alt=media</code></td><td>Gaaner file</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <pre class="filetree">my-player/
+├─ index.html           <span class="c"># app-er shell</span>
+├─ style.css            <span class="c"># Spotify-style design</span>
+├─ config.js            <span class="c"># Client ID + folder (secret na)</span>
+├─ sources/
+│  ├─ gdrive.js         <span class="c"># Google login + Drive</span>
+│  └─ pcloud.js         <span class="c"># pore</span>
+├─ library.js           <span class="c"># folder → album → track</span>
+├─ player.js            <span class="c"># audio, queue, lock screen</span>
+├─ ui.js                <span class="c"># screen gulo</span>
+├─ manifest.webmanifest <span class="c"># phone install</span>
+├─ sw.js                <span class="c"># service worker</span>
+└─ README.md            <span class="c"># setup guide</span></pre>
+    </div>
+    <p class="dim">Kono framework ba build step nei. File gulo jemon ache temon-i GitHub Pages-e cholbe. PC-te test korar jonno <code>localhost:8080</code>-o thakbe.</p>
+  </section>
+
+  <!-- A10 NEEDS -->
+  <section>
+    <div class="sec-head"><span class="ref">A10</span><h2 class="amber-t">Tomar kach theke lagbe</h2></div>
+    <p class="dim">Ek ek kore chaibo. Ekta pele tarpor porer ta.</p>
+    <ul class="checklist">
+      <li><span><b>Step 1 · Google Client ID</b> · <span style="color:var(--mint)">pawa geche ✓</span></span></li>
+      <li><span><b>Step 2 · Drive folder link</b> · <span style="color:var(--mint)">pawa geche ✓</span></span></li>
+      <li><span><b>Step 3 · GitHub username</b> · <span class="amber-t">ekhon</span></span></li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <span>MP-001 · PRIVATE PLAYER · REV C</span>
+    <span>Drawn by Claude · 27.09.2026</span>
+  </footer>
+</main>
+</body>
+</html>

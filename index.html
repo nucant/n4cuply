@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0e12">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>My Player</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <!-- Login -->
+  <section id="login" class="login" hidden>
+    <div class="login-card">
+      <img src="icons/icon.svg" alt="" class="login-logo" width="72" height="72">
+      <h1>My Player</h1>
+      <p>Tomar nijer gaan, tomar Google Drive theke.</p>
+      <button id="connect" class="btn primary big" type="button">Google diye connect koro</button>
+      <p class="login-note">App shudhu gaan porte pare. Drive-e kichu bodlay na, delete-o kore na.</p>
+      <p id="login-error" class="login-error" role="alert" hidden></p>
+    </div>
+  </section>
+
+  <!-- App -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <a href="#" class="brand" aria-label="Home"><img src="icons/icon.svg" alt="" width="28" height="28"><span>My Player</span></a>
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Gaan ba album khojo" autocomplete="off" aria-label="Search">
+      </label>
+      <div class="menu-wrap">
+        <button id="menu-btn" class="icon-btn" type="button" aria-label="Menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+        </button>
+        <div id="menu" class="menu" hidden>
+          <button type="button" data-menu="refresh">Library refresh koro</button>
+          <button type="button" data-menu="install" hidden>Phone-e install koro</button>
+          <button type="button" data-menu="logout" class="danger">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="main" tabindex="-1"></main>
+
+    <!-- Mini player -->
+    <div id="mini" class="mini" hidden>
+      <button id="mini-open" class="mini-info" type="button" aria-label="Now playing kholo">
+        <span class="art mini-art" id="mini-art"></span>
+        <span class="mini-text"><b id="mini-title"></b><small id="mini-album"></small></span>
+      </button>
+      <button id="mini-play" class="icon-btn play-btn" type="button" aria-label="Play"></button>
+      <button id="mini-next" class="icon-btn" type="button" aria-label="Next"></button>
+      <div class="mini-bar"><span id="mini-progress"></span></div>
+    </div>
+  </div>
+
+  <!-- Now playing -->
+  <section id="now" class="now" hidden aria-label="Now playing">
+    <div class="now-inner">
+      <div class="now-top">
+        <button id="now-close" class="icon-btn" type="button" aria-label="Bondho koro"></button>
+        <span class="now-from" id="now-from"></span>
+        <span class="icon-btn-spacer"></span>
+      </div>
+      <div class="art now-art" id="now-art"></div>
+      <div class="now-meta">
+        <h2 id="now-title"></h2>
+        <p id="now-album"></p>
+      </div>
+      <div class="seek">
+        <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+        <div class="times"><span id="t-cur">0:00</span><span id="t-dur">0:00</span></div>
+      </div>
+      <div class="controls">
+        <button id="c-shuffle" class="icon-btn toggle" type="button" aria-label="Shuffle"></button>
+        <button id="c-prev" class="icon-btn" type="button" aria-label="Previous"></button>
+        <button id="c-play" class="icon-btn play-btn big" type="button" aria-label="Play"></button>
+        <button id="c-next" class="icon-btn" type="button" aria-label="Next"></button>
+        <button id="c-repeat" class="icon-btn toggle" type="button" aria-label="Repeat"></button>
+      </div>
+      <div class="upnext">
+        <h3>Porer gaan</h3>
+        <div id="upnext-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
