@@ -28,7 +28,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '1.9';
+const APP_VERSION = '2.0';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -60,6 +60,7 @@ const ICON = {
   mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></svg>',
   moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.2"/></svg>',
   headphones: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-3a8 8 0 0116 0v3"/><rect class="fill" x="3" y="14" width="5" height="7" rx="1.5"/><rect class="fill" x="16" y="14" width="5" height="7" rx="1.5"/></svg>',
@@ -81,9 +82,92 @@ const allFiles = () => Object.values(scans).flatMap((sc) => sc.files);
 const hasScans = () => Object.keys(scans).length > 0;
 const defaultScan = () => scans.default || Object.values(scans)[0] || null;
 
+// ================= layout: phone / tablet / computer =================
+const LAYOUT_NAMES = { phone: 'Phone', tablet: 'Tablet', desktop: 'Computer' };
+
+/** Auto: phones under 700px, touch screens and mid-size windows are tablets, the rest computers. */
+function autoLayout() {
+  const w = window.innerWidth;
+  const touch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1;
+  if (w < 700) return 'phone';
+  if (touch || w < 1100) return 'tablet';
+  return 'desktop';
+}
+
+function effectiveLayout() {
+  const pref = settings.layout || 'auto';
+  return pref === 'auto' ? autoLayout() : pref;
+}
+
+function applyLayout() {
+  const mode = effectiveLayout();
+  const w = window.innerWidth;
+  const landscape = w > window.innerHeight;
+  const b = document.body.classList;
+  b.remove('layout-phone', 'layout-tablet', 'layout-desktop');
+  b.add('layout-' + mode);
+  const wide = mode !== 'phone';
+  b.toggle('wide', wide);
+  b.toggle('narrow', !wide);
+  // Now Playing side by side on computers and landscape tablets.
+  const npWide = mode === 'desktop' || (mode === 'tablet' && landscape && w >= 900);
+  b.toggle('np-wide', npWide);
+  b.toggle('np-narrow', !npWide);
+  // Phone layout on a big screen: keep it phone-sized in the middle.
+  b.toggle('phone-frame', mode === 'phone' && w > 700);
+  b.toggle('has-sidebar', wide && w >= 700);
+  renderSidebar();
+}
+
+let layoutTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(layoutTimer);
+  layoutTimer = setTimeout(applyLayout, 120);
+});
+window.addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
+
+let lastSidebar = '';
+function renderSidebar() {
+  const el = $('#sidebar');
+  if (!el) return;
+  if (!document.body.classList.contains('has-sidebar') || $('#app').hidden) {
+    if (lastSidebar) { el.innerHTML = ''; lastSidebar = ''; }
+    return;
+  }
+  const r = route();
+  const q = $('#q').value.trim();
+  const tab = q ? '' : r.name === 'album' ? 'albums' : r.name === 'artist' ? 'artists' : r.name === 'playlist' ? 'playlists' : r.name;
+  const link = (href, name, icon, label) => `<a class="side-link ${tab === name ? 'on' : ''}" href="${href}">${icon}<span>${label}</span></a>`;
+  const current = r.name === 'playlist' ? r.id : '';
+  const pls = lib ? playlists() : [];
+  const html = `
+    <a class="side-brand" href="#" data-action="home"><img src="icons/icon.svg" alt="" width="30" height="30"><span>N4cuply</span></a>
+    <nav class="side-group" aria-label="Library">
+      ${link('#albums', 'albums', ICON.album, 'Albums')}
+      ${link('#songs', 'songs', ICON.queue, 'Songs')}
+      ${link('#artists', 'artists', ICON.mic, 'Artists')}
+      ${link('#playlists', 'playlists', ICON.heart, 'Playlists')}
+    </nav>
+    <div class="side-title"><span>Playlists</span><button class="round-btn sm" type="button" data-action="new-playlist" aria-label="New playlist">${ICON.plus}</button></div>
+    <div class="side-list">
+      <a class="side-pl ${current === 'liked' ? 'on' : ''}" href="#playlist/liked"><span class="art sm liked-art">${ICON.heartFill}</span><span>Liked songs</span></a>
+      ${pls.map((p) => `<a class="side-pl ${current === p.id ? 'on' : ''}" href="#playlist/${encodeURIComponent(p.id)}"><span class="side-pl-icon">${ICON.queue}</span><span>${esc(p.name)}</span></a>`).join('')}
+    </div>
+    <div class="side-bottom">
+      <button class="side-link" type="button" data-action="upload">${ICON.upload}<span>Upload</span></button>
+      <button class="side-link" type="button" data-action="organize">${ICON.wand}<span>Organize</span></button>
+      <button class="side-link" type="button" data-action="settings">${ICON.gear}<span>Settings</span></button>
+    </div>`;
+  if (html !== lastSidebar) {
+    el.innerHTML = html;
+    lastSidebar = html;
+  }
+}
+
 // ================= boot =================
 async function boot() {
   registerServiceWorker();
+  applyLayout();
   wireStaticUi();
   for (const src of listSources()) {
     const cached = loadScanCache(src);
@@ -131,6 +215,7 @@ function showLogin(error = '') {
 function showApp() {
   $('#login').hidden = true;
   $('#app').hidden = false;
+  applyLayout();
   render();
 }
 
@@ -324,6 +409,7 @@ function setMain(html) {
 function render() {
   const main = $('#main');
   lists = {};
+  renderSidebar();
   const q = $('#q').value.trim().toLowerCase();
 
   if (!lib) {
@@ -830,7 +916,7 @@ function updateTime() {
 }
 
 let nowOpen = false;
-function setNowOpen(open, push = true) {
+function setNowOpen(open, push = true, { instant = false } = {}) {
   if (open === nowOpen) return;
   nowOpen = open;
   const el = $('#now');
@@ -838,6 +924,10 @@ function setNowOpen(open, push = true) {
     el.classList.remove('closing');
     el.hidden = false;
     updateTime();
+  } else if (instant) {
+    // Already animated away by a swipe: just hide.
+    el.hidden = true;
+    el.classList.remove('closing');
   } else {
     el.classList.add('closing');
     setTimeout(() => { if (!nowOpen) { el.hidden = true; el.classList.remove('closing'); } }, 260);
@@ -972,11 +1062,19 @@ function openSheet(kind, title, html, push = true) {
   if (push && !wasOpen) history.pushState({ ...(history.state || {}), sheet: true }, '');
 }
 
-function closeSheet(pop = true) {
+function closeSheet(pop = true, { instant = false } = {}) {
   if (!sheetKind) return;
   sheetKind = '';
   const sheet = $('#sheet');
   const scrim = $('#sheet-scrim');
+  if (instant) {
+    sheet.hidden = true;
+    scrim.hidden = true;
+    sheet.classList.remove('closing');
+    scrim.classList.remove('closing');
+    if (pop && history.state?.sheet) history.back();
+    return;
+  }
   sheet.classList.add('closing');
   scrim.classList.add('closing');
   setTimeout(() => {
@@ -1222,6 +1320,12 @@ async function openSettings(push = true) {
 
     <div class="info-group set-group">
       <h4>Display</h4>
+      <div class="set-row col">
+        <span><b>Layout</b><small>${(settings.layout || 'auto') === 'auto' ? `Auto picks the layout for your screen · now using ${LAYOUT_NAMES[autoLayout()]}` : 'Fixed layout. Choose Auto to switch with your screen size.'}</small></span>
+        <div class="seg small" role="radiogroup" aria-label="Layout">
+          ${[['auto', 'Auto'], ['phone', 'Phone'], ['tablet', 'Tablet'], ['desktop', 'Computer']].map(([v, label]) => `<button type="button" role="radio" aria-checked="${(settings.layout || 'auto') === v}" class="${(settings.layout || 'auto') === v ? 'on' : ''}" data-layout="${v}">${label}</button>`).join('')}
+        </div>
+      </div>
       ${toggleRow('dynamicColor', 'Colors from album art', 'Tint screens with each cover’s colors.')}
       ${toggleRow('showTech', 'Technical line', 'Codec, bitrate, sample rate and bit depth on Now Playing.')}
       ${toggleRow('lyricsPreview', 'Lyric preview', 'Current lyric line under the song title.')}
@@ -1263,6 +1367,15 @@ function onSettingsEvent(e) {
     return;
   }
   if (e.type !== 'click') return;
+  const lay = e.target.closest('[data-layout]');
+  if (lay) {
+    setSetting('layout', lay.dataset.layout);
+    applyLayout();
+    render();
+    openSettings(false);
+    toast(`Layout: ${lay.dataset.layout === 'auto' ? 'Auto (' + LAYOUT_NAMES[autoLayout()] + ')' : LAYOUT_NAMES[lay.dataset.layout]}.`);
+    return;
+  }
   const xf = e.target.closest('[data-xf]');
   if (xf) {
     setSetting('crossfade', Number(xf.dataset.xf));
@@ -2718,6 +2831,7 @@ function wireStaticUi() {
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
     else if (action === 'collection') openCollectionMenu(el.dataset.kind, el.dataset.id);
+    else if (action === 'home') { e.preventDefault(); $('#q').value = ''; location.hash = ''; render(); }
     else if (action === 'select') { if (sel.on) endSelect(); else startSelect(); }
     else if (action === 'add-songs') openAddSongs(el.dataset.id);
     else if (action === 'new-playlist') { openPlaylistPicker([]); $('#sheet-title').textContent = 'New playlist'; }
@@ -2733,6 +2847,7 @@ function wireStaticUi() {
     else if (action === 'save-lyrics') saveCurrentLyrics(el);
   };
   $('#main').addEventListener('click', onAction);
+  $('#sidebar').addEventListener('click', onAction);
   const body = $('#sheet-body');
   body.addEventListener('click', onAction);
   body.addEventListener('click', onSettingsEvent);
@@ -2956,6 +3071,7 @@ function swipeToClose(el, { canStart, onClose }) {
     el.style.transform = `translate3d(0, ${dy}px, 0)`;
   };
   const finish = (close) => {
+    if (close && el.id === 'sheet') $('#sheet-scrim').classList.add('closing');
     el.classList.add('swipe-settle');
     el.style.transform = close ? `translate3d(0, ${window.innerHeight}px, 0)` : '';
     setTimeout(() => {
@@ -3006,11 +3122,11 @@ function swipeToClose(el, { canStart, onClose }) {
 swipeToClose($('#now'), {
   // Anywhere when the page is scrolled to the top (or on the top bar).
   canStart: (e) => nowOpen && (e.target.closest('.np-top') || $('.np-layout').scrollTop <= 0),
-  onClose: () => setNowOpen(false),
+  onClose: () => setNowOpen(false, true, { instant: true }),
 });
 swipeToClose($('#sheet'), {
   canStart: (e) => !!sheetKind && (e.target.closest('.sheet-head') || $('#sheet-body').scrollTop <= 0),
-  onClose: () => closeSheet(),
+  onClose: () => closeSheet(true, { instant: true }),
 });
 
 // Read-only handle for debugging in the browser console.

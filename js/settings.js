@@ -12,6 +12,7 @@ const DEFAULTS = {
   writeTags: true,       // write edits into FLAC / MP3 files
   artistInfo: true,      // artist photos + bios from Wikipedia
   crossfade: 0,          // seconds between songs (0 = gapless hand-over)
+  layout: 'auto',        // auto | phone | tablet | desktop
   volume: 100,
 };
 
