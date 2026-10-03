@@ -30,7 +30,7 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.12'; // keep in sync with version.json
+const APP_VERSION = '2.13'; // keep in sync with version.json
 const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -484,12 +484,24 @@ function profile() {
   return { name: p.name || accountName(primaryAccount()) || 'You', photo: p.photo || '' };
 }
 
+// Default profile picture: retro over-ear headphones on a neon sunset.
+const AVATAR_SVG = `<svg class="avatar-art" viewBox="0 0 64 64" aria-hidden="true">
+  <defs><linearGradient id="av-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff3d8b"/><stop offset=".55" stop-color="#7b2cff"/><stop offset="1" stop-color="#1a0638"/></linearGradient></defs>
+  <rect width="64" height="64" fill="url(#av-bg)"/>
+  <circle cx="32" cy="42" r="15" fill="#ffd166" opacity=".9"/>
+  <path d="M17 42h30M18 46h28M20 50h24" stroke="#7b2cff" stroke-width="1.6" opacity=".55"/>
+  <path d="M15 37v-5a17 17 0 0 1 34 0v5" fill="none" stroke="#3ef4ff" stroke-width="4.5" stroke-linecap="round"/>
+  <rect x="10" y="33" width="11" height="17" rx="5" fill="#170630" stroke="#3ef4ff" stroke-width="2.5"/>
+  <rect x="43" y="33" width="11" height="17" rx="5" fill="#170630" stroke="#3ef4ff" stroke-width="2.5"/>
+  <circle cx="15.5" cy="41.5" r="2.4" fill="#ff3d8b"/><circle cx="48.5" cy="41.5" r="2.4" fill="#ff3d8b"/>
+  <path d="M4 22q3-4 6 0M54 22q3-4 6 0" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" opacity=".8"/>
+</svg>`;
+
 function avatarHtml(cls = '') {
   const p = profile();
-  const initials = p.name.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase();
   return p.photo
     ? `<span class="avatar ${cls}" style="background-image:url('${p.photo}')"></span>`
-    : `<span class="avatar ${cls}"><span>${esc(initials || '♪')}</span></span>`;
+    : `<span class="avatar avatar-default ${cls}">${AVATAR_SVG}</span>`;
 }
 
 function openProfile(push = true) {

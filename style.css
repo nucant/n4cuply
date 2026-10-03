@@ -1760,3 +1760,6 @@ body.theme-amoled .info-group, body.theme-amoled .stat { background: rgba(255, 2
 .vinyl-ico { animation: spin 1.8s linear infinite paused; transform-origin: 50% 50%; }
 body.is-playing .vinyl-ico { animation-play-state: running; }
 @media (prefers-reduced-motion: reduce) { .vinyl-ico { animation: none; } }
+/* ---------- v2.13: retro audiophile default avatar ---------- */
+.avatar.avatar-default { overflow: hidden; background: #1a0638; padding: 0; }
+.avatar-art { width: 100%; height: 100%; display: block; stroke: none; fill: none; }

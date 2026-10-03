@@ -93,8 +93,13 @@ export const onRulesChange = (fn) => listeners.add(fn);
 export function adoptRules(remote, { keepPersonal = false } = {}) {
   if (!remote || remote.v !== 1) return false;
   if (keepPersonal) {
+    // Earlier versions copied the admin's name and photo to family members: drop that copy.
+    if (rules.profile && JSON.stringify(rules.profile) === JSON.stringify(remote.profile || {})) {
+      rules.profile = {};
+      saveRules();
+    }
     if (!(remote.updatedAt > (rules.remoteAt || 0))) return false;
-    rules = { ...emptyRules(), ...remote, likes: rules.likes || {}, playlists: rules.playlists || [], updatedAt: rules.updatedAt, remoteAt: remote.updatedAt };
+    rules = { ...emptyRules(), ...remote, likes: rules.likes || {}, playlists: rules.playlists || [], profile: rules.profile || {}, updatedAt: rules.updatedAt, remoteAt: remote.updatedAt };
   } else {
     if (!(remote.updatedAt > rules.updatedAt)) return false;
     rules = { ...emptyRules(), ...remote };
