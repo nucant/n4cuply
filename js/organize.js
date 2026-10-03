@@ -85,10 +85,20 @@ function touch() {
 export const getRules = () => rules;
 export const onRulesChange = (fn) => listeners.add(fn);
 
-/** Replace local rules with a newer copy (from Drive). Returns true if replaced. */
-export function adoptRules(remote) {
-  if (!remote || remote.v !== 1 || !(remote.updatedAt > rules.updatedAt)) return false;
-  rules = { ...emptyRules(), ...remote };
+/**
+ * Replace local rules with a newer copy (from Drive). Returns true if replaced.
+ * keepPersonal (family members): take the admin's library fixes but keep this
+ * person's own likes and playlists, which never go back to Drive.
+ */
+export function adoptRules(remote, { keepPersonal = false } = {}) {
+  if (!remote || remote.v !== 1) return false;
+  if (keepPersonal) {
+    if (!(remote.updatedAt > (rules.remoteAt || 0))) return false;
+    rules = { ...emptyRules(), ...remote, likes: rules.likes || {}, playlists: rules.playlists || [], updatedAt: rules.updatedAt, remoteAt: remote.updatedAt };
+  } else {
+    if (!(remote.updatedAt > rules.updatedAt)) return false;
+    rules = { ...emptyRules(), ...remote };
+  }
   saveRules();
   return true;
 }

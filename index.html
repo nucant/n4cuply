@@ -90,10 +90,29 @@
       <img src="icons/icon.svg" alt="" class="login-logo" width="84" height="84">
       <h1>N4cuply</h1>
       <p class="login-tag">Your music, straight from your Drive.</p>
-      <p>Lossless, Hi-Res, and every detail in the file.</p>
-      <button id="connect" class="pill-btn light big" type="button">Connect with Google</button>
-      <p class="login-note">Read-only access. Nothing in your Drive is changed or deleted.</p>
+
+      <!-- Family members: username and password -->
+      <form id="family-login" class="login-form" autocomplete="on">
+        <input id="fl-user" class="set-input" type="text" name="username" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        <input id="fl-pass" class="set-input" type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+        <button class="pill-btn light big" type="submit">Sign in</button>
+        <button class="text-btn" type="button" data-login="show-signup">New here? Ask for an account</button>
+      </form>
+
+      <form id="family-signup" class="login-form" autocomplete="off" hidden>
+        <input id="fs-name" class="set-input" type="text" placeholder="Your name" maxlength="60" required>
+        <input id="fs-user" class="set-input" type="text" placeholder="Choose a username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" required>
+        <input id="fs-pass" class="set-input" type="password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" minlength="6" required>
+        <button class="pill-btn light big" type="submit">Ask for an account</button>
+        <button class="text-btn" type="button" data-login="show-login">I already have an account</button>
+      </form>
+
       <p id="login-error" class="login-error" role="alert" hidden></p>
+      <p id="login-ok" class="login-note login-ok" role="status" hidden></p>
+
+      <div class="login-admin">
+        <button id="connect" class="text-btn" type="button">Admin? Sign in with Google</button>
+      </div>
     </div>
   </section>
 
@@ -109,6 +128,7 @@
       <button id="upload-btn" class="round-btn" type="button" aria-label="Upload songs" title="Upload songs">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
       </button>
+      <button id="fs-btn" class="round-btn fs-btn" type="button" aria-label="Full screen" title="Full screen (F)" hidden></button>
       <button id="settings-btn" class="round-btn" type="button" aria-label="Settings" title="Settings">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
       </button>
@@ -142,7 +162,8 @@
       <div class="np-top">
         <button id="np-close" class="round-btn glass-soft" type="button" aria-label="Close"></button>
         <span class="np-handle" aria-hidden="true"></span>
-        <span class="np-top-right"><button id="np-style" class="round-btn glass-soft" type="button" aria-label="Change player style" title="Player style"></button>
+        <span class="np-top-right"><button id="np-fs" class="round-btn glass-soft fs-btn" type="button" aria-label="Full screen" title="Full screen (F)" hidden></button>
+        <button id="np-style" class="round-btn glass-soft" type="button" aria-label="Change player style" title="Player style"></button>
         <button id="np-more" class="round-btn glass-soft" type="button" aria-label="Song info"></button></span>
       </div>
       <div class="np-body">

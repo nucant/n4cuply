@@ -7,6 +7,7 @@
 // worker (seeking works); without it the file is downloaded, then played.
 import { AuthError } from './drive.js';
 import { playTarget } from './sources.js';
+import { createChain, dspActive, DSP_DEFAULTS } from './dsp.js';
 
 const STATE_KEY = 'mp.player.v1';
 const decks = [new Audio(), new Audio()];
@@ -55,6 +56,8 @@ function gainFactor(track) {
 let ctx = null;
 const gains = [null, null];
 let analyserNode = null;
+let dsp = null; // equalizer and effects (js/dsp.js)
+let dspSettings = { ...DSP_DEFAULTS };
 
 function useGainNodes() {
   if (ctx) return true;
@@ -68,9 +71,13 @@ function useGainNodes() {
     analyserNode.minDecibels = -92;
     analyserNode.maxDecibels = -12; // headroom so loud masters don't pin every bar
     analyserNode.connect(ctx.destination);
+    // decks -> gains -> effects -> analyser (the visualizer shows what you hear)
+    dsp = createChain(ctx);
+    dsp.apply(dspSettings);
+    dsp.output.connect(analyserNode);
     decks.forEach((d, i) => {
       const g = ctx.createGain();
-      ctx.createMediaElementSource(d).connect(g).connect(analyserNode);
+      ctx.createMediaElementSource(d).connect(g).connect(dsp.input);
       gains[i] = g;
     });
     return true;
@@ -94,7 +101,7 @@ function getAnalyser() {
 }
 
 function needGainNodes() {
-  return state.crossfade > 0 || replayGain !== 'off';
+  return state.crossfade > 0 || replayGain !== 'off' || dspActive(dspSettings);
 }
 
 /** Browsers start audio contexts suspended until a tap; call from play actions. */
@@ -696,6 +703,25 @@ function setReplayGain(mode) {
   applyVolume();
 }
 
+/** Equalizer and effects; see js/dsp.js for the fields. Applies live. */
+function setDsp(d) {
+  dspSettings = { ...DSP_DEFAULTS, ...d };
+  if (dspActive(dspSettings) && A().src) { wakeAudio(); applyVolume(); }
+  dsp?.apply(dspSettings);
+}
+
+/** Playback speed (0.5..2). keepPitch stops voices sounding higher when faster. */
+function setSpeed(rate, keepPitch = true) {
+  const r = Math.max(0.5, Math.min(2, Number(rate) || 1));
+  for (const d of decks) {
+    d.defaultPlaybackRate = r; // survives loading the next song
+    d.playbackRate = r;
+    d.preservesPitch = keepPitch;
+    d.webkitPreservesPitch = keepPitch;
+  }
+  updatePosition();
+}
+
 export const player = {
   get audio() { return A(); },
   getAnalyser,
@@ -723,4 +749,7 @@ export const player = {
   relink,
   setVolume,
   setReplayGain,
+  setDsp,
+  setSpeed,
+  get webAudio() { return !!ctx; },
 };

@@ -15,6 +15,11 @@ const DEFAULTS = {
   layout: 'auto',        // auto | phone | tablet | desktop
   playerStyle: 'default', // default | vinyl | cassette | vintage
   volume: 100,
+  dsp: null,             // equalizer and effects (js/dsp.js DSP_DEFAULTS when null)
+  speed: 1,              // playback speed
+  keepPitch: true,       // keep voices natural when the speed changes
+  accent: 250,           // accent hue when colors don't come from album art; 'grey' = none
+  theme: 'dark',         // dark | amoled
 };
 
 function load() {

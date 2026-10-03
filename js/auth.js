@@ -1,7 +1,10 @@
 // Google sign-in (Google Identity Services token flow), for one or more accounts.
 // Tokens live on this device, one per Google account, each valid for about an
 // hour. signIn() opens a popup, so always call it from inside a click handler.
+// Family members (js/family.js) have no Google account: their server session
+// stands in for the token, and they can never write.
 import { CONFIG } from '../config.js';
+import { isFamily, familyToken, familyUser, familyLogout } from './family.js';
 
 export const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 // Asked for only when the user uploads songs.
@@ -107,28 +110,33 @@ export async function initAuth() {
   readClient = makeClient(SCOPE);
 }
 
-export const primaryAccount = () => state.primary;
-export const accountName = (email) => state.names[email] || '';
-export const knownAccounts = () => Object.keys(state.tokens);
+export const primaryAccount = () => (isFamily() ? familyUser().username : state.primary);
+export const accountName = (email) => (isFamily() ? familyUser().name : state.names[email] || '');
+export const knownAccounts = () => (isFamily() ? [] : Object.keys(state.tokens));
+export const isAdmin = () => !isFamily() && !!state.primary && state.primary.toLowerCase() === String(CONFIG.adminEmail || '').toLowerCase();
 
 const tokenOf = (account) => state.tokens[account || state.primary];
 
 export function hasToken(account) {
+  if (isFamily()) return !!familyToken();
   const t = tokenOf(account);
   return !!t && t.exp > Date.now() + 30e3;
 }
 
 export function canWrite(account) {
+  if (isFamily()) return false;
   return hasToken(account) && !!tokenOf(account).write;
 }
 
 /** True when less than 20 minutes are left, so the next tap renews it early. */
 export function expiresSoon(account) {
+  if (isFamily()) return false;
   const t = tokenOf(account);
   return !t || t.exp - Date.now() < 20 * 60e3;
 }
 
 export function accessToken(account) {
+  if (isFamily()) return familyToken() || null;
   return hasToken(account) ? tokenOf(account).value : null;
 }
 
@@ -140,6 +148,13 @@ export function accessToken(account) {
  *   write:   also ask for upload permission
  */
 export function signIn({ account = '', choose = false, write = false } = {}) {
+  if (isFamily()) {
+    // A family session that stopped working (password changed, account turned
+    // off): back to the login screen.
+    familyLogout();
+    location.reload();
+    return new Promise(() => {});
+  }
   if (!readClient) return Promise.reject(new Error("Sign-in isn't ready yet. Try again in a moment."));
   if (pending) return pending.promise;
   const target = choose ? '' : (account || state.primary);
@@ -159,6 +174,7 @@ export function signIn({ account = '', choose = false, write = false } = {}) {
 }
 
 export function signOut() {
+  familyLogout();
   for (const t of Object.values(state.tokens)) {
     try { google.accounts.oauth2.revoke(t.value, () => {}); } catch (e) { /* offline */ }
   }

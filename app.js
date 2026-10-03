@@ -1,6 +1,8 @@
 import {
-  initAuth, hasToken, canWrite, expiresSoon, signIn, signOut, primaryAccount, accountName, knownAccounts,
+  initAuth, hasToken, canWrite, expiresSoon, signIn, signOut, primaryAccount, accountName, knownAccounts, isAdmin,
 } from './js/auth.js';
+import { isFamily, familyEnabled, familyLogin, familySignup, familyUser, familyChangePassword } from './js/family.js';
+import { DSP_DEFAULTS, EQ_BANDS, EQ_LABELS, EQ_PRESETS } from './js/dsp.js';
 import { AuthError, uploadFile, createFolder, getFolder, updateFileContent } from './js/drive.js';
 import {
   scanSource, loadScanCache, clearCache, loadMetaCache, missingMeta, readMissingMeta, build, refFor, LocalPermissionError,
@@ -28,7 +30,8 @@ import { settings, setSetting, parseFolderInput } from './js/settings.js';
 import { idbGetAll } from './js/store.js';
 import { player } from './js/player.js';
 
-const APP_VERSION = '2.10'; // keep in sync with version.json
+const APP_VERSION = '2.12'; // keep in sync with version.json
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -51,12 +54,16 @@ const ICON = {
   upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>',
   drive: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5h7l6 10.5-3.5 6h-12L2.5 14z"/><path d="M8.5 3.5l6.5 10.5h6.5M2.5 14h13l-3.5 6"/></svg>',
   pc: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  expand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>',
+  shrink: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>',
   wand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20L15 9M14 4v3M19 9h3M17.5 5.5l2-2M12 6.5l1.5 1.5M16 11l1.5 1.5"/></svg>',
   pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
   heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 4 4.5 7.1 4.5c2 0 3.6 1.1 4.9 2.8 1.3-1.7 2.9-2.8 4.9-2.8 3.1 0 5.4 2.9 4.3 6.2C19.5 15.4 12 20 12 20z"/></svg>',
   heartFill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 4 4.5 7.1 4.5c2 0 3.6 1.1 4.9 2.8 1.3-1.7 2.9-2.8 4.9-2.8 3.1 0 5.4 2.9 4.3 6.2C19.5 15.4 12 20 12 20z"/></svg>',
   playNext: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M4 11h10M4 16h6"/><path class="fill" d="M15 12.5v8l6-4z"/></svg>',
   album: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  // Library tab: a record that spins while music plays (body.is-playing).
+  vinyl: '<svg class="vinyl-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6" opacity=".4"/><circle class="fill" cx="12" cy="12" r="2.6"/><circle cx="12" cy="12" r=".6" fill="var(--bg)" stroke="none"/><path d="M12 4.5a7.5 7.5 0 0 1 6.5 3.75" opacity=".95"/></svg>',
   mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></svg>',
   moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg>',
@@ -92,7 +99,7 @@ let playlog = [];
 try { playlog = JSON.parse(localStorage.getItem(PLAYLOG_KEY) || '[]'); } catch (e) { playlog = []; }
 
 function logPlay(t) {
-  playlog.push({ at: Date.now(), s: Math.round(t.duration || 0) });
+  playlog.push({ at: Date.now(), s: Math.round(t.duration || 0), k: t.key });
   if (playlog.length > 3000) playlog = playlog.slice(-3000);
   try { localStorage.setItem(PLAYLOG_KEY, JSON.stringify(playlog)); } catch (e) { /* ignore */ }
 }
@@ -560,7 +567,7 @@ function renderNav() {
       <nav class="rail-group" aria-label="Library">
         ${r('#home', 'home', ICON.home, 'Home')}
         ${r('#search', 'search', ICON.search, 'Search')}
-        ${r('#albums', 'albums', ICON.album, 'Albums')}
+        ${r('#albums', 'albums', ICON.vinyl, 'Albums')}
         ${r('#songs', 'songs', ICON.queue, 'Songs')}
         ${r('#artists', 'artists', ICON.mic, 'Artists')}
         ${r('#playlists', 'playlists', ICON.heart, 'Playlists')}
@@ -568,14 +575,15 @@ function renderNav() {
       <div class="rail-group rail-bottom">
         ${btn('upload', ICON.upload, 'Upload')}
         ${btn('organize', ICON.wand, 'Organize')}
-        ${btn('settings', ICON.gear, 'Settings')}
+        ${fullscreenSupported() ? `<button class="rail-btn fs-btn" type="button" data-action="fullscreen" aria-label="${isFullscreen() ? 'Exit full screen' : 'Full screen'}" title="Full screen (F)">${isFullscreen() ? ICON.shrink : ICON.expand}</button>` : ''}
+        ${r('#settings', 'settings', ICON.gear, 'Settings')}
       </div>`;
   } else {
     const t = (href, name, icon, label) => `<a class="tab-btn ${name.split(' ').includes(tab) ? 'on' : ''}" href="${href}">${icon}<span>${label}</span></a>`;
     bar = `
       ${t('#home', 'home', ICON.home, 'Home')}
       ${t('#search', 'search', ICON.search, 'Search')}
-      ${t('#albums', 'albums songs artists', ICON.album, 'Library')}
+      ${t('#albums', 'albums songs artists', ICON.vinyl, 'Library')}
       ${t('#playlists', 'playlists', ICON.heart, 'Playlists')}
       <button class="tab-btn" type="button" data-action="profile">${avatarHtml('sm')}<span>Profile</span></button>`;
   }
@@ -676,11 +684,14 @@ async function boot() {
     rebuild();
   }
 
-  try {
-    await initAuth();
-  } catch (e) {
-    showLogin(e.message);
-    return;
+  // Family members never use Google sign-in.
+  if (!isFamily()) {
+    try {
+      await initAuth();
+    } catch (e) {
+      showLogin(e.message);
+      return;
+    }
   }
 
   if (hasToken()) {
@@ -706,7 +717,7 @@ const APP_FILES = [
   './', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'sw.js', 'version.json',
   'js/auth.js', 'js/drive.js', 'js/library.js', 'js/player.js', 'js/meta.js', 'js/store.js', 'js/covers.js',
   'js/lyrics.js', 'js/settings.js', 'js/sources.js', 'js/organize.js', 'js/online.js', 'js/tagwrite.js',
-  'js/artists.js', 'js/analyze.js',
+  'js/artists.js', 'js/analyze.js', 'js/family.js', 'js/dsp.js', 'admin.html', 'privacy.html',
 ];
 
 /** Clears every cached copy of the app and reloads the newest version. */
@@ -747,9 +758,68 @@ function showLogin(error = '') {
   $('#app').hidden = true;
   $('#now').hidden = true;
   $('#login').hidden = false;
+  $('#family-login').hidden = !familyEnabled();
+  $('#family-signup').hidden = true;
+  $('#login-ok').hidden = true;
   const el = $('#login-error');
   el.textContent = error;
   el.hidden = !error;
+}
+
+function loginMessage({ error = '', ok = '' }) {
+  $('#login-error').textContent = error;
+  $('#login-error').hidden = !error;
+  $('#login-ok').textContent = ok;
+  $('#login-ok').hidden = !ok;
+}
+
+/** Username and password sign-in for family members. */
+async function onFamilyLogin(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true;
+  loginMessage({});
+  try {
+    await familyLogin($('#fl-user').value.trim(), $('#fl-pass').value);
+    // Start clean: nothing cached from another account on this device.
+    resetLibrary();
+    document.body.classList.add('family');
+    showApp();
+    refreshLibrary();
+  } catch (err) {
+    loginMessage({ error: err.message });
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function onFamilySignup(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true;
+  loginMessage({});
+  try {
+    const user = $('#fs-user').value.trim();
+    const msg = await familySignup(user, $('#fs-name').value.trim(), $('#fs-pass').value);
+    e.target.reset();
+    $('#family-signup').hidden = true;
+    $('#family-login').hidden = false;
+    $('#fl-user').value = user;
+    loginMessage({ ok: msg });
+  } catch (err) {
+    loginMessage({ error: err.message });
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function onLoginClick(e) {
+  const act = e.target.closest('[data-login]')?.dataset.login;
+  if (!act) return;
+  loginMessage({});
+  $('#family-login').hidden = act !== 'show-login';
+  $('#family-signup').hidden = act !== 'show-signup';
+  (act === 'show-signup' ? $('#fs-name') : $('#fl-user')).focus();
 }
 
 function showApp() {
@@ -913,7 +983,7 @@ function route() {
   if ((m = h.match(/^album\/(.+)$/))) return { name: 'album', id: decodeURIComponent(m[1]) };
   if ((m = h.match(/^artist\/(.+)$/))) return { name: 'artist', id: decodeURIComponent(m[1]) };
   if ((m = h.match(/^playlist\/(.+)$/))) return { name: 'playlist', id: decodeURIComponent(m[1]) };
-  if (['songs', 'artists', 'playlists', 'albums', 'search'].includes(h)) return { name: h };
+  if (['songs', 'artists', 'playlists', 'albums', 'search', 'settings'].includes(h)) return { name: h };
   return { name: 'home' };
 }
 
@@ -955,6 +1025,12 @@ function render() {
   lists = {};
   renderNav();
 
+  // Settings works even before the library has loaded.
+  if (route().name === 'settings') {
+    if (setMain(settingsPageHtml())) { hydrateArt(main); fillStorageInfo(); }
+    return;
+  }
+
   if (!lib) {
     setMain(scanError ? errorBlock(scanError) : scanningBlock());
     return;
@@ -994,10 +1070,42 @@ function render() {
   markPlaying();
 }
 
+// A little cassette with legs runs along every loading bar, music notes behind it.
+const RUNNER = `<span class="runner" aria-hidden="true">
+  <span class="rb-note n1">&#9834;</span><span class="rb-note n2">&#9835;</span><span class="rb-note n3">&#9834;</span>
+  <svg class="rb" viewBox="0 0 48 46">
+    <g class="rb-leg rb-leg-a"><path d="M17 31 L15 40"/><ellipse cx="13.5" cy="41.5" rx="4" ry="2.2"/></g>
+    <g class="rb-leg rb-leg-b"><path d="M31 31 L33 40"/><ellipse cx="34.5" cy="41.5" rx="4" ry="2.2"/></g>
+    <g class="rb-body">
+      <rect x="4" y="4" width="40" height="27" rx="6" fill="#ff8a3d" stroke="#3a2412" stroke-width="2"/>
+      <rect x="9" y="8" width="30" height="8" rx="2.5" fill="#fff3e6"/>
+      <g class="rb-eyes"><circle cx="19" cy="12" r="1.9" fill="#2a1a10"/><circle cx="29" cy="12" r="1.9" fill="#2a1a10"/></g>
+      <rect x="11" y="18.5" width="26" height="9" rx="4.5" fill="#3a2412"/>
+      <g class="rb-reel" style="transform-origin:18px 23px"><circle cx="18" cy="23" r="3.2" fill="#f5e6d6"/><path d="M18 20.6v4.8M15.6 23h4.8" stroke="#3a2412" stroke-width="1.2"/></g>
+      <g class="rb-reel" style="transform-origin:30px 23px"><circle cx="30" cy="23" r="3.2" fill="#f5e6d6"/><path d="M30 20.6v4.8M27.6 23h4.8" stroke="#3a2412" stroke-width="1.2"/></g>
+    </g>
+  </svg>
+</span>`;
+
+/** Loading bar with the runner. pct = null runs back and forth (unknown length). */
+function runBar(pct, id = '') {
+  const loop = pct == null;
+  const p = loop ? 0 : Math.max(0, Math.min(100, pct));
+  return `<div class="run-track${loop ? ' loop' : ''}"${id ? ` id="${id}"` : ''}><i class="run-fill" style="width:${p.toFixed(1)}%"></i><span class="run-pos" style="left:${p.toFixed(1)}%">${RUNNER}</span></div>`;
+}
+
+/** Moves an existing bar without redrawing it, so the runner keeps running. */
+function moveRunBar(el, pct) {
+  if (!el) return;
+  const p = `${Math.max(0, Math.min(100, pct)).toFixed(1)}%`;
+  el.querySelector('.run-fill').style.width = p;
+  el.querySelector('.run-pos').style.left = p;
+}
+
 function scanningBlock() {
   return `
     <div class="empty">
-      <div class="loader">${ICON.spinner}</div>
+      <div class="loader-run">${runBar(null)}</div>
       <h2>Looking for music in your Drive</h2>
       <p>${scanCount ? `Found ${plural(scanCount, 'song')}…` : 'Scanning folders…'}</p>
     </div>`;
@@ -1037,12 +1145,16 @@ function noticesHtml() {
 function scanBarHtml() {
   if (!metaRun) return '';
   const pct = metaRun.total ? (metaRun.done / metaRun.total) * 100 : 0;
-  return `<div class="scan" id="scan"><span>Reading song info · ${metaRun.done} of ${metaRun.total}</span><div class="scan-bar"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
+  return `<div class="scan" id="scan"><span id="scan-text">Reading song info · ${metaRun.done} of ${metaRun.total}</span>${runBar(pct)}</div>`;
 }
 
 function renderScanBar() {
   const el = $('#scan');
-  if (el && metaRun) el.outerHTML = scanBarHtml();
+  if (el && metaRun) {
+    // Update in place so the runner's animation isn't restarted on every song.
+    $('#scan-text').textContent = `Reading song info · ${metaRun.done} of ${metaRun.total}`;
+    moveRunBar(el.querySelector('.run-track'), metaRun.total ? (metaRun.done / metaRun.total) * 100 : 0);
+  }
   else if (!el && metaRun && $('.home-head')) $('.home-head').insertAdjacentHTML('beforeend', scanBarHtml());
   else if (el && !metaRun) el.remove();
 }
@@ -1270,10 +1382,9 @@ function initials(s) {
 }
 
 const getTrack = (id) => lib?.tracksById[id];
-const NEUTRAL = [230, 0.06, 0.4];
 
 function tint(el, color, hue) {
-  if (!settings.dynamicColor) applyTint(el, NEUTRAL);
+  if (!settings.dynamicColor) applyTint(el, accentColor());
   else applyTint(el, color, hue);
 }
 
@@ -1461,6 +1572,7 @@ function updateLikeButton() {
 function updatePlayState() {
   const s = player.state;
   $('#now').classList.toggle('playing', !!s.playing);
+  document.body.classList.toggle('is-playing', !!s.playing);
   const dashPlay = document.querySelector('.dash-play');
   if (dashPlay) dashPlay.innerHTML = s.loading ? ICON.spinner : s.playing ? ICON.pause : ICON.play;
   const icon = s.loading ? ICON.spinner : s.playing ? ICON.pause : ICON.play;
@@ -1974,20 +2086,216 @@ function toggleRow(key, label, hint) {
   </label>`;
 }
 
-async function openSettings(push = true) {
-  const rg = settings.replayGain;
-  const html = `
+const seg = (label, items, current, attr) => `<div class="seg small" role="radiogroup" aria-label="${esc(label)}">
+  ${items.map(([v, text]) => `<button type="button" role="radio" aria-checked="${current === v}" class="${current === v ? 'on' : ''}" ${attr}="${v}">${text}</button>`).join('')}
+</div>`;
+
+// ---------- sound: equalizer and effects (js/dsp.js) ----------
+function dspNow() {
+  const d = { ...DSP_DEFAULTS, ...(settings.dsp || {}) };
+  d.gains = Array.isArray(d.gains) && d.gains.length === EQ_BANDS.length ? d.gains.slice() : DSP_DEFAULTS.gains.slice();
+  return d;
+}
+
+function saveDsp(d) {
+  setSetting('dsp', d);
+  player.setDsp(d);
+}
+
+const dbText = (v) => `${v > 0 ? '+' : ''}${v} dB`;
+const balanceText = (v) => (v === 0 ? 'Center' : `${Math.abs(v)}% ${v < 0 ? 'left' : 'right'}`);
+
+function sliderRow(key, label, hint, value, min, max, text) {
+  return `<div class="set-row col">
+    <span class="slider-head"><b>${esc(label)}</b><output data-out="${key}">${esc(text)}</output></span>
+    ${hint ? `<small class="slider-hint">${esc(hint)}</small>` : ''}
+    <input type="range" class="set-range" data-dsp="${key}" min="${min}" max="${max}" step="1" value="${value}" aria-label="${esc(label)}">
+  </div>`;
+}
+
+function soundHtml() {
+  const d = dspNow();
+  const preset = EQ_PRESETS[d.preset] ? d.preset : 'custom';
+  return `
+    <div class="info-group set-group">
+      <h4>Equalizer</h4>
+      <label class="set-row">
+        <span><b>Equalizer</b><small>Shape the sound with 10 bands, or pick a preset.</small></span>
+        <input type="checkbox" class="switch" data-dsp-toggle="eqOn" ${d.eqOn ? 'checked' : ''}>
+      </label>
+      <div class="eq-presets ${d.eqOn ? '' : 'off'}">
+        ${Object.entries(EQ_PRESETS).map(([k, p]) => `<button type="button" class="chip ${preset === k ? 'on' : ''}" data-eq-preset="${k}">${esc(p.name)}</button>`).join('')}
+        ${preset === 'custom' ? '<span class="chip on static">Custom</span>' : ''}
+      </div>
+      <div class="eq ${d.eqOn ? '' : 'off'}">
+        ${EQ_BANDS.map((f, i) => `<div class="eq-band">
+          <output data-out="band-${i}">${d.gains[i] > 0 ? '+' : ''}${d.gains[i]}</output>
+          <input type="range" class="eq-slider" data-eq-band="${i}" min="-12" max="12" step="1" value="${d.gains[i]}" aria-label="${EQ_LABELS[i]} Hz" ${d.eqOn ? '' : 'disabled'}>
+          <small>${EQ_LABELS[i]}</small>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="info-group set-group">
+      <h4>Volume and tone</h4>
+      ${sliderRow('preamp', 'Volume booster', 'Above 0 makes quiet songs louder. Keep the limiter on so loud parts don’t crackle.', d.preamp, -12, 12, dbText(d.preamp))}
+      ${sliderRow('bass', 'Bass', '', d.bass, -12, 12, dbText(d.bass))}
+      ${sliderRow('treble', 'Treble', '', d.treble, -12, 12, dbText(d.treble))}
+      ${sliderRow('balance', 'Balance', '', Math.round(d.balance * 100), -100, 100, balanceText(Math.round(d.balance * 100)))}
+      <label class="set-row">
+        <span><b>Mono</b><small>The same sound in both ears. Handy with one earbud.</small></span>
+        <input type="checkbox" class="switch" data-dsp-toggle="mono" ${d.mono ? 'checked' : ''}>
+      </label>
+      <label class="set-row">
+        <span><b>Limiter</b><small>Stops boosted sound from distorting.</small></span>
+        <input type="checkbox" class="switch" data-dsp-toggle="limiter" ${d.limiter ? 'checked' : ''}>
+      </label>
+      <div class="set-buttons"><button class="pill-btn small" type="button" data-dsp-reset>Reset sound</button></div>
+    </div>
+
+    <div class="info-group set-group">
+      <h4>Speed</h4>
+      <div class="set-row col">
+        <span><b>Playback speed</b><small>Now ${settings.speed}×</small></span>
+        ${seg('Playback speed', [[0.75, '0.75×'], [0.9, '0.9×'], [1, '1×'], [1.1, '1.1×'], [1.25, '1.25×'], [1.5, '1.5×']], settings.speed, 'data-speed')}
+      </div>
+      ${toggleRow('keepPitch', 'Keep pitch', 'Voices sound natural at any speed.')}
+    </div>
+    ${IS_IOS ? '<p class="info-note pad">On iPhone and iPad, sound effects can stop music when the screen locks. If that happens, reset the sound.</p>' : ''}`;
+}
+
+// ---------- look: accent and theme ----------
+const ACCENTS = [[250, 'Violet'], [215, 'Blue'], [188, 'Teal'], [145, 'Green'], [45, 'Gold'], [22, 'Orange'], [355, 'Red'], [320, 'Pink'], ['grey', 'Grey']];
+
+/** The tint used when colours don't come from the cover. */
+function accentColor() {
+  return settings.accent === 'grey' ? [230, 0.06, 0.4] : [Number(settings.accent) || 250, 0.6, 0.4];
+}
+
+function applyLook() {
+  document.body.classList.toggle('theme-amoled', settings.theme === 'amoled');
+  applyTint(document.documentElement, accentColor());
+  $('meta[name="theme-color"]')?.setAttribute('content', settings.theme === 'amoled' ? '#000000' : '#0b0b0f');
+}
+
+function lookHtml() {
+  const style = settings.playerStyle || 'default';
+  const layout = settings.layout || 'auto';
+  return `
+    <div class="info-group set-group">
+      <h4>Colors</h4>
+      <div class="set-row col">
+        <span><b>Accent color</b><small>${settings.dynamicColor ? 'Now Playing takes its colors from the album art; the rest of the app uses this.' : 'Used everywhere.'}</small></span>
+        <div class="swatches">
+          ${ACCENTS.map(([h, name]) => `<button type="button" class="swatch ${String(settings.accent) === String(h) ? 'on' : ''}" data-accent="${h}" style="--h:${h === 'grey' ? 230 : h};--s:${h === 'grey' ? '6%' : '70%'}" aria-label="${name}" title="${name}"></button>`).join('')}
+        </div>
+      </div>
+      <div class="set-row col">
+        <span><b>Theme</b><small>Black saves battery on phones with an OLED screen.</small></span>
+        ${seg('Theme', [['dark', 'Dark'], ['amoled', 'Black']], settings.theme || 'dark', 'data-theme-pick')}
+      </div>
+      ${toggleRow('dynamicColor', 'Colors from album art', 'Tint Now Playing with each cover’s colors.')}
+    </div>
+
+    <div class="info-group set-group">
+      <h4>Display</h4>
+      <div class="set-row col">
+        <span><b>Player style</b><small>How Now Playing looks. You can also switch with the record button at the top of Now Playing.</small></span>
+        ${seg('Player style', PLAYER_STYLES, style, 'data-pstyle')}
+      </div>
+      <div class="set-row col">
+        <span><b>Layout</b><small>${layout === 'auto' ? `Auto picks the layout for your screen · now using ${LAYOUT_NAMES[autoLayout()]}` : 'Fixed layout. Choose Auto to switch with your screen size.'}</small></span>
+        ${seg('Layout', [['auto', 'Auto'], ['phone', 'Phone'], ['tablet', 'Tablet'], ['desktop', 'Computer']], layout, 'data-layout')}
+      </div>
+      ${toggleRow('showTech', 'Technical line', 'Codec, bitrate, sample rate and bit depth on Now Playing.')}
+      ${toggleRow('lyricsPreview', 'Lyric preview', 'Current lyric line under the song title.')}
+      ${toggleRow('artistInfo', 'Artist photos and bios', 'From Wikipedia. Only artist names are sent.')}
+      ${toggleRow('onlineLookup', 'Find missing lyrics and covers', 'From LRCLIB (lyrics) and Apple iTunes (covers). Only song, artist and album names are sent.')}
+      ${isFamily() ? '' : toggleRow('writeTags', 'Save edits into music files', 'When you edit or fix a FLAC or MP3, write the new tags and cover into the file itself.')}
+    </div>`;
+}
+
+// ---------- playback ----------
+function playbackHtml() {
+  return `
+    <div class="info-group set-group">
+      <h4>Playback</h4>
+      <div class="set-row col">
+        <span><b>Volume normalization</b><small>Uses ReplayGain tags so quiet and loud songs play at a similar level.</small></span>
+        ${seg('Volume normalization', [['off', 'Off'], ['track', 'Track'], ['album', 'Album']], settings.replayGain, 'data-rg')}
+      </div>
+      <div class="set-row col">
+        <span><b>Crossfade</b><small>Blend the end of each song into the next. Off still starts the next song without a gap. On iPhone, if music stops when the screen locks, set this to Off.</small></span>
+        ${seg('Crossfade', [[0, 'Off'], [3, '3 s'], [6, '6 s'], [9, '9 s'], [12, '12 s']], settings.crossfade, 'data-xf')}
+      </div>
+    </div>`;
+}
+
+// ---------- listening stats ----------
+function fmtListen(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+function statsHtml() {
+  const totalPlays = Object.values(plays).reduce((a, b) => a + b, 0);
+  if (!totalPlays) {
+    return `<div class="info-group set-group"><h4>Listening</h4><p class="empty-note">Play some music and your stats show up here. A song counts after 30 seconds.</p></div>`;
+  }
+  const seconds = playlog.reduce((a, p) => a + (p.s || 0), 0);
+  const week = weekMinutes();
+  const weekMax = Math.max(1, ...week.map((d) => d.mins));
+  const tracks = lib ? lib.tracks.filter((t) => plays[t.key]) : [];
+  const tally = (keyOf) => {
+    const m = new Map();
+    for (const t of tracks) {
+      const k = keyOf(t);
+      if (k) m.set(k, (m.get(k) || 0) + plays[t.key]);
+    }
+    return [...m].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  };
+  const topSongs = tracks.slice().sort((a, b) => plays[b.key] - plays[a.key]).slice(0, 5);
+  lists.statsTop = topSongs;
+  const topArtists = tally((t) => t.albumArtist || t.artist);
+  const topAlbums = tally((t) => t.albumKey);
+  const bar = (n, max) => `<i style="width:${Math.max(4, (n / max) * 100).toFixed(1)}%"></i>`;
+  const block = (title, rows) => (rows.trim() ? `<div class="info-group set-group"><h4>${title}</h4>${rows}</div>` : '');
+  return `
+    <div class="stat-tiles">
+      <div class="stat"><b>${nf(totalPlays)}</b><small>plays</small></div>
+      <div class="stat"><b>${fmtListen(seconds)}</b><small>listened</small></div>
+      <div class="stat"><b>${nf(Object.keys(plays).length)}</b><small>different songs</small></div>
+    </div>
+    <div class="info-group set-group">
+      <h4>Last 7 days</h4>
+      <div class="week">
+        ${week.map((d) => `<div class="week-day ${d.today ? 'today' : ''}" title="${d.mins} min"><span style="height:${Math.max(3, (d.mins / weekMax) * 100).toFixed(1)}%"></span><small>${d.label}</small></div>`).join('')}
+      </div>
+    </div>
+    ${block('Top songs', topSongs.map((t, i) => `<button class="set-row stat-row" type="button" data-action="play-track" data-list="statsTop" data-i="${i}">
+        <span><b>${esc(t.title)}</b><small>${esc(t.artist || t.album)} · ${plural(plays[t.key], 'play')}</small></span><span class="stat-bar">${bar(plays[t.key], plays[topSongs[0].key])}</span></button>`).join(''))}
+    ${block('Top artists', topArtists.map(([name, n]) => `<a class="set-row stat-row" href="#artist/${encodeURIComponent(name)}">
+        <span><b>${esc(name)}</b><small>${plural(n, 'play')}</small></span><span class="stat-bar">${bar(n, topArtists[0][1])}</span></a>`).join(''))}
+    ${block('Top albums', topAlbums.map(([key, n]) => { const a = lib?.albumsById[key]; return a ? `<a class="set-row stat-row" href="#album/${encodeURIComponent(key)}">
+        <span><b>${esc(a.name)}</b><small>${esc(a.artist)} · ${plural(n, 'play')}</small></span><span class="stat-bar">${bar(n, topAlbums[0][1])}</span></a>` : ''; }).join(''))}
+    <div class="set-buttons"><button class="pill-btn small danger" type="button" data-set-action="reset-stats">Reset stats</button></div>`;
+}
+
+// ---------- library and account ----------
+function libraryHtml() {
+  return `
     <div class="info-group set-group">
       <h4>Music sources</h4>
       ${listSources().map(sourceRow).join('')}
       <div class="set-buttons">
         <button class="pill-btn small" type="button" data-set-action="refresh">Refresh all</button>
         <button class="pill-btn small" type="button" data-set-action="rescan">Re-read all song info</button>
-        <button class="pill-btn small" type="button" data-set-action="organize">${ICON.wand}<span>Organize library</span></button>
+        ${isFamily() ? '' : `<button class="pill-btn small" type="button" data-set-action="organize">${ICON.wand}<span>Organize library</span></button>`}
       </div>
     </div>
 
-    <div class="info-group set-group">
+    ${isFamily() ? '' : `<div class="info-group set-group">
       <h4>Add a source <span class="h4-note">${listSources().length - 1} of ${MAX_EXTRA} extra</span></h4>
       ${canAddSource() ? `
       <form class="set-form" data-form="add-drive">
@@ -2013,84 +2321,178 @@ async function openSettings(push = true) {
         </div>
         ${settings.folderId ? '<button class="text-btn" type="button" data-set-action="folder-reset">Go back to the original folder</button>' : ''}
       </form>
-    </div>
-
-    <div class="info-group set-group">
-      <h4>Playback</h4>
-      <div class="set-row col">
-        <span><b>Volume normalization</b><small>Uses ReplayGain tags so quiet and loud songs play at a similar level.</small></span>
-        <div class="seg small" role="radiogroup" aria-label="Volume normalization">
-          ${['off', 'track', 'album'].map((v) => `<button type="button" role="radio" aria-checked="${rg === v}" class="${rg === v ? 'on' : ''}" data-rg="${v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}
-        </div>
-      </div>
-      <div class="set-row col">
-        <span><b>Crossfade</b><small>Blend the end of each song into the next. Off still starts the next song without a gap. On iPhone, if music stops when the screen locks, set this to Off.</small></span>
-        <div class="seg small" role="radiogroup" aria-label="Crossfade">
-          ${[0, 3, 6, 9, 12].map((v) => `<button type="button" role="radio" aria-checked="${settings.crossfade === v}" class="${settings.crossfade === v ? 'on' : ''}" data-xf="${v}">${v ? v + ' s' : 'Off'}</button>`).join('')}
-        </div>
-      </div>
-    </div>
-
-    <div class="info-group set-group">
-      <h4>Display</h4>
-      <div class="set-row col">
-        <span><b>Player style</b><small>How Now Playing looks. You can also switch with the record button at the top of Now Playing.</small></span>
-        <div class="seg small" role="radiogroup" aria-label="Player style">
-          ${PLAYER_STYLES.map(([v, label]) => `<button type="button" role="radio" aria-checked="${(settings.playerStyle || 'default') === v}" class="${(settings.playerStyle || 'default') === v ? 'on' : ''}" data-pstyle="${v}">${label}</button>`).join('')}
-        </div>
-      </div>
-      <div class="set-row col">
-        <span><b>Layout</b><small>${(settings.layout || 'auto') === 'auto' ? `Auto picks the layout for your screen · now using ${LAYOUT_NAMES[autoLayout()]}` : 'Fixed layout. Choose Auto to switch with your screen size.'}</small></span>
-        <div class="seg small" role="radiogroup" aria-label="Layout">
-          ${[['auto', 'Auto'], ['phone', 'Phone'], ['tablet', 'Tablet'], ['desktop', 'Computer']].map(([v, label]) => `<button type="button" role="radio" aria-checked="${(settings.layout || 'auto') === v}" class="${(settings.layout || 'auto') === v ? 'on' : ''}" data-layout="${v}">${label}</button>`).join('')}
-        </div>
-      </div>
-      ${toggleRow('dynamicColor', 'Colors from album art', 'Tint screens with each cover’s colors.')}
-      ${toggleRow('showTech', 'Technical line', 'Codec, bitrate, sample rate and bit depth on Now Playing.')}
-      ${toggleRow('lyricsPreview', 'Lyric preview', 'Current lyric line under the song title.')}
-      ${toggleRow('writeTags', 'Save edits into music files', 'When you edit or fix a FLAC or MP3, write the new tags and cover into the file itself.')}
-      ${toggleRow('artistInfo', 'Artist photos and bios', 'From Wikipedia. Only artist names are sent.')}
-      ${toggleRow('onlineLookup', 'Find missing lyrics and covers', 'From LRCLIB (lyrics) and Apple iTunes (covers). Only song, artist and album names are sent.')}
-    </div>
+    </div>`}
 
     <div class="info-group set-group">
       <h4>Storage</h4>
       <div class="set-row"><span><b>Saved on this device</b><small id="storage-info">Counting…</small></span>
         <button class="pill-btn small" type="button" data-set-action="clear">Clear</button></div>
-    </div>
+    </div>`;
+}
 
+function accountHtml() {
+  const u = familyUser();
+  return `
     <div class="info-group set-group">
       <h4>Account</h4>
-      ${knownAccounts().map((a) => `<div class="set-row"><span><b>${esc(accountName(a) || a)}${a === primaryAccount() ? ' · main' : ''}</b><small>${esc(a)} · ${canWrite(a) ? 'read and upload' : hasToken(a) ? 'read only' : 'signed out'}</small></span>${hasToken(a) ? '' : `<button class="pill-btn small" type="button" data-set-action="connect" data-account="${esc(a)}">Connect</button>`}</div>`).join('') || '<div class="set-row"><span><b>Google Drive</b><small>Not connected</small></span></div>'}
+      ${isFamily() ? `<div class="set-row"><span><b>${esc(u.name || u.username)}</b><small>Signed in as ${esc(u.username)} · family member</small></span></div>
+      <form class="set-form" data-form="password" autocomplete="on">
+        <label class="set-label" for="pw-current">Change your password</label>
+        <input type="text" name="username" value="${esc(u.username)}" autocomplete="username" hidden>
+        <input id="pw-current" class="set-input" type="password" placeholder="Current password" autocomplete="current-password" required>
+        <div class="set-inline">
+          <input id="pw-new" class="set-input" type="password" placeholder="New password (6+ characters)" autocomplete="new-password" minlength="6" required>
+          <button class="pill-btn small" type="submit">Change</button>
+        </div>
+      </form>` : ''}
+      ${isAdmin() ? '<div class="set-row"><span><b>Family members</b><small>Approve new people, add or remove accounts. Only you can see this.</small></span><a class="pill-btn small light" href="admin.html">Open</a></div>' : ''}
+      ${isFamily() ? '' : knownAccounts().map((a) => `<div class="set-row"><span><b>${esc(accountName(a) || a)}${a === primaryAccount() ? ' · main' : ''}</b><small>${esc(a)} · ${canWrite(a) ? 'read and upload' : hasToken(a) ? 'read only' : 'signed out'}</small></span>${hasToken(a) ? '' : `<button class="pill-btn small" type="button" data-set-action="connect" data-account="${esc(a)}">Connect</button>`}</div>`).join('') || '<div class="set-row"><span><b>Google Drive</b><small>Not connected</small></span></div>'}
       ${installPrompt ? '<div class="set-row"><span><b>Install app</b><small>Add N4cuply to your home screen.</small></span><button class="pill-btn small" type="button" data-set-action="install">Install</button></div>' : ''}
       <div class="set-row"><span><b>Log out</b><small>Signs out and clears saved data on this device.</small></span>
         <button class="pill-btn small danger" type="button" data-set-action="logout">Log out</button></div>
     </div>
+
     <div class="info-group set-group">
       <h4>App</h4>
       <div class="set-row"><span><b>Version ${APP_VERSION}</b><small>Checks for updates every time the app opens. If something still looks old, force an update.</small></span>
         <button class="pill-btn small light" type="button" data-set-action="force-update">Force update</button></div>
     </div>
     <p class="info-note center">N4cuply ${APP_VERSION} · ${plural(allFiles().length, 'song')} from ${plural(listSources().length, 'source')}</p>`;
-  openSheet('settings', 'Settings', html, push);
+}
+
+// ---------- the settings page (#settings) ----------
+const SETTINGS_TABS = [['sound', 'Sound'], ['playback', 'Playback'], ['look', 'Look'], ['stats', 'Stats'], ['library', 'Library'], ['account', 'Account']];
+let settingsTab = 'sound';
+try { settingsTab = sessionStorage.getItem('mp.settings.tab') || 'sound'; } catch (e) { /* ignore */ }
+
+function settingsPageHtml() {
+  if (!SETTINGS_TABS.some(([k]) => k === settingsTab)) settingsTab = 'sound';
+  const body = { sound: soundHtml, playback: playbackHtml, look: lookHtml, stats: statsHtml, library: libraryHtml, account: accountHtml }[settingsTab]();
+  return `<div class="set-page">
+    <header class="set-head"><h1>Settings</h1></header>
+    <nav class="set-tabs" role="tablist" aria-label="Settings sections">
+      ${SETTINGS_TABS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${settingsTab === k}" class="${settingsTab === k ? 'on' : ''}" data-set-tab="${k}">${label}</button>`).join('')}
+    </nav>
+    <div class="set-body" data-tab="${settingsTab}">${body}</div>
+  </div>`;
+}
+
+async function fillStorageInfo() {
+  const el = $('#storage-info');
+  if (!el) return;
   const [meta, covers] = await Promise.all([idbGetAll('meta'), idbGetAll('covers')]);
   let bytes = 0;
   for (const c of covers.values()) bytes += c?.blob?.size || 0;
-  const el = $('#storage-info');
-  if (el) el.textContent = `Info for ${plural(meta.size, 'song')} · ${plural(covers.size, 'cover')} (${fmtSize(bytes) || '0 KB'})`;
+  if (el.isConnected) el.textContent = `Info for ${plural(meta.size, 'song')} · ${plural(covers.size, 'cover')} (${fmtSize(bytes) || '0 KB'})`;
+}
+
+/** Opens the Settings page, or redraws it in place when it's already open. */
+function openSettings(tab) {
+  if (typeof tab === 'string') {
+    settingsTab = tab;
+    try { sessionStorage.setItem('mp.settings.tab', tab); } catch (e) { /* ignore */ }
+  }
+  if (route().name !== 'settings') {
+    location.hash = 'settings';
+    return;
+  }
+  const y = window.scrollY;
+  lastHtml = '';
+  render();
+  window.scrollTo(0, y);
 }
 
 function onSettingsEvent(e) {
-  if (sheetKind !== 'settings') return;
+  if (route().name !== 'settings' || !e.target.closest?.('.set-page')) return;
+
+  // Sound: sliders apply while dragging, without redrawing the page.
+  const band = e.target.closest('[data-eq-band]');
+  const knob = e.target.closest('[data-dsp]');
+  if ((band || knob) && e.type === 'input') {
+    const d = dspNow();
+    const v = Number(e.target.value);
+    if (band) {
+      d.gains[Number(band.dataset.eqBand)] = v;
+      d.preset = 'custom';
+      const out = $(`[data-out="band-${band.dataset.eqBand}"]`);
+      if (out) out.textContent = `${v > 0 ? '+' : ''}${v}`;
+      document.querySelectorAll('.eq-presets .chip').forEach((c) => c.classList.toggle('on', c.classList.contains('static')));
+    } else {
+      const key = knob.dataset.dsp;
+      d[key] = key === 'balance' ? v / 100 : v;
+      const out = $(`[data-out="${key}"]`);
+      if (out) out.textContent = key === 'balance' ? balanceText(v) : dbText(v);
+    }
+    saveDsp(d);
+    return;
+  }
+  if (band && e.type === 'change') { openSettings(); return; } // shows "Custom"
+  const dt = e.target.closest('[data-dsp-toggle]');
+  if (dt) {
+    if (e.type === 'change') {
+      const d = dspNow();
+      d[dt.dataset.dspToggle] = dt.checked;
+      saveDsp(d);
+      if (dt.dataset.dspToggle === 'eqOn') openSettings();
+    }
+    return;
+  }
+
   const sw = e.target.closest('[data-set]');
   if (sw) {
     if (e.type === 'change') {
       setSetting(sw.dataset.set, sw.checked);
-      applyDisplaySettings();
+      if (sw.dataset.set === 'keepPitch') player.setSpeed(settings.speed, settings.keepPitch);
+      else applyDisplaySettings();
+      if (sw.dataset.set === 'dynamicColor') openSettings();
     }
     return;
   }
   if (e.type !== 'click') return;
+  const tab = e.target.closest('[data-set-tab]');
+  if (tab) {
+    openSettings(tab.dataset.setTab);
+    window.scrollTo(0, 0);
+    return;
+  }
+  const pre = e.target.closest('[data-eq-preset]');
+  if (pre) {
+    const d = dspNow();
+    d.preset = pre.dataset.eqPreset;
+    d.gains = EQ_PRESETS[d.preset].gains.slice();
+    d.eqOn = true;
+    saveDsp(d);
+    openSettings();
+    return;
+  }
+  if (e.target.closest('[data-dsp-reset]')) {
+    saveDsp({ ...DSP_DEFAULTS, gains: DSP_DEFAULTS.gains.slice() });
+    toast('Sound reset.');
+    openSettings();
+    return;
+  }
+  const sp = e.target.closest('[data-speed]');
+  if (sp) {
+    setSetting('speed', Number(sp.dataset.speed));
+    player.setSpeed(settings.speed, settings.keepPitch);
+    openSettings();
+    return;
+  }
+  const ac = e.target.closest('[data-accent]');
+  if (ac) {
+    setSetting('accent', ac.dataset.accent === 'grey' ? 'grey' : Number(ac.dataset.accent));
+    applyLook();
+    applyDisplaySettings();
+    openSettings();
+    return;
+  }
+  const th = e.target.closest('[data-theme-pick]');
+  if (th) {
+    setSetting('theme', th.dataset.themePick);
+    applyLook();
+    openSettings();
+    return;
+  }
   const ps = e.target.closest('[data-pstyle]');
   if (ps) {
     setSetting('playerStyle', ps.dataset.pstyle);
@@ -2125,7 +2527,7 @@ function onSettingsEvent(e) {
   if (!act) return;
   if (act === 'refresh') { withAuth(() => refreshLibrary()); toast('Refreshing your library…'); }
   if (act === 'rescan') withAuth(() => { resetLibrary(); closeSheet(); refreshLibrary(); });
-  if (act === 'upload') openUpload(undefined, false);
+  if (act === 'upload') openUpload();
   if (act === 'reset-rules') { resetRules(); toast('All merges undone.'); openSettings(false); }
   if (act === 'clear') { resetLibrary(); closeSheet(); toast('Cleared. Song info will be read again.'); withAuth(() => refreshLibrary()); }
   if (act === 'allow') allowLocal(e.target.closest('[data-src]').dataset.src).then(() => openSettings(false));
@@ -2141,7 +2543,15 @@ function onSettingsEvent(e) {
     toast('Source removed. Its files are untouched.');
   }
   if (act === 'add-local') addLocal();
-  if (act === 'organize') openOrganize(false);
+  if (act === 'organize') openOrganize();
+  if (act === 'reset-stats' && confirm('Reset your play counts and listening time on this device?')) {
+    plays = {};
+    playlog = [];
+    recent = [];
+    for (const k of [PLAYS_KEY, PLAYLOG_KEY, HISTORY_KEY]) try { localStorage.removeItem(k); } catch (err) { /* ignore */ }
+    toast('Stats reset.');
+    openSettings();
+  }
   if (act === 'folder-reset') { setSetting('folderId', ''); switchFolder(); }
   if (act === 'install' && installPrompt) { installPrompt.prompt(); installPrompt = null; openSettings(false); }
   if (act === 'logout') logout();
@@ -2185,7 +2595,28 @@ async function addDrive(link, accountChoice) {
   }
 }
 
+async function changeMyPassword(form) {
+  const btn = form.querySelector('[type="submit"]');
+  btn.disabled = true;
+  try {
+    await familyChangePassword($('#pw-current').value, $('#pw-new').value);
+    form.reset();
+    toast('Password changed. Your other devices are signed out.');
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function onSettingsSubmit(e) {
+  if (route().name !== 'settings' || !e.target.closest?.('.set-page')) return;
+  const pw = e.target.closest('[data-form="password"]');
+  if (pw) {
+    e.preventDefault();
+    changeMyPassword(pw);
+    return;
+  }
   const add = e.target.closest('[data-form="add-drive"]');
   if (add) {
     e.preventDefault();
@@ -2368,7 +2799,7 @@ function wireDragDrop() {
   let depth = 0;
   const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
   window.addEventListener('dragenter', (e) => {
-    if (!hasFiles(e) || $('#app').hidden) return;
+    if (!hasFiles(e) || $('#app').hidden || isFamily()) return;
     depth++;
     $('#drop').hidden = false;
   });
@@ -2382,7 +2813,7 @@ function wireDragDrop() {
     e.preventDefault();
     depth = 0;
     $('#drop').hidden = true;
-    if ($('#app').hidden) return;
+    if ($('#app').hidden || isFamily()) return;
     addUploadFiles(e.dataTransfer.files);
     const r = route();
     const folder = r.name === 'album' && lib?.albumsById[r.id] ? lib.albumsById[r.id].folderId : undefined;
@@ -3315,7 +3746,7 @@ function openOrganize(push = true) {
     <div class="set-buttons">
       <button class="pill-btn light" type="button" data-org="fix-all" ${busy ? 'disabled' : ''}>${ICON.wand}<span>Fix everything</span></button>
     </div>
-    ${org.log || busy ? `<div class="org-progress"><span id="org-log">${esc(org.log)}</span><div class="scan-bar"><i id="org-bar" style="width:${org.total ? (org.done / org.total) * 100 : 0}%"></i></div></div>` : ''}
+    ${org.log || busy ? `<div class="org-progress"><span id="org-log">${esc(org.log)}</span>${runBar(org.total ? (org.done / org.total) * 100 : 0, 'org-bar')}</div>` : ''}
 
     <div class="info-group set-group">
       ${toggleRow('onlineLookup', 'Find missing lyrics and covers online', 'Uses LRCLIB for lyrics and Apple iTunes for covers. Only artist, song and album names are sent. Results are saved into your folders.')}
@@ -3369,7 +3800,7 @@ function orgProgress(text, done, total) {
   const log = $('#org-log');
   const bar = $('#org-bar');
   if (log) log.textContent = text;
-  if (bar) bar.style.width = `${total ? (done / total) * 100 : 0}%`;
+  moveRunBar(bar, total ? (done / total) * 100 : 0);
   if (!log && sheetKind === 'organize') openOrganize(false);
 }
 
@@ -3535,14 +3966,51 @@ async function pullRules() {
   if (!scan?.rulesFileId) return;
   try {
     const remote = JSON.parse(await (await readBlob({ id: scan.rulesFileId, src: 'default' })).text());
-    if (adoptRules(remote)) { rebuild(); render(); }
+    if (adoptRules(remote, { keepPersonal: isFamily() })) { rebuild(); render(); }
     else if (getRules().updatedAt > (remote.updatedAt || 0)) pushRules();
   } catch (e) { /* ignore a broken or missing file */ }
 }
 
+// ================= full screen =================
+// Not on iPhone: Safari there only lets videos go full screen (the installed
+// home-screen app already has no browser bars).
+const fullscreenSupported = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+
+function toggleFullscreen() {
+  const el = document.documentElement;
+  const done = isFullscreen()
+    ? (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+    : (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+  Promise.resolve(done).catch(() => toast("Full screen isn't available here."));
+}
+
+function updateFullscreenButtons() {
+  const on = isFullscreen();
+  document.body.classList.toggle('is-fullscreen', on);
+  for (const b of document.querySelectorAll('.fs-btn')) {
+    b.hidden = !fullscreenSupported();
+    b.innerHTML = on ? ICON.shrink : ICON.expand;
+    b.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
+  }
+}
+
 // ================= events =================
+// Actions that change the library: admin only.
+const ADMIN_ACTIONS = new Set(['upload', 'organize', 'fix-track', 'edit-track', 'save-lyrics']);
+
 function wireStaticUi() {
+  document.body.classList.toggle('family', isFamily());
+  applyLook();
+  player.setDsp(settings.dsp || {});
+  player.setSpeed(settings.speed, settings.keepPitch);
+  const main = $('#main');
+  for (const type of ['click', 'change', 'input']) main.addEventListener(type, onSettingsEvent);
+  main.addEventListener('submit', onSettingsSubmit);
   $('#connect').addEventListener('click', connect);
+  $('#family-login').addEventListener('submit', onFamilyLogin);
+  $('#family-signup').addEventListener('submit', onFamilySignup);
+  $('#login').addEventListener('click', onLoginClick);
   $('#main').addEventListener('input', (e) => {
     if (e.target.id !== 'sq') return;
     searchText = e.target.value;
@@ -3553,6 +4021,7 @@ function wireStaticUi() {
     const el = e.target.closest('[data-action]');
     if (!el) return;
     const action = el.dataset.action;
+    if (isFamily() && ADMIN_ACTIONS.has(action)) return; // hidden for family members anyway
     if (action === 'track-info') { e.stopPropagation(); openTrackInfo(el.dataset.id); return; }
     if (action === 'dequeue') { e.stopPropagation(); player.removeAt(Number(el.dataset.pos)); return; }
     if (action === 'song-menu') { e.stopPropagation(); openSongMenu(el.dataset.id, { playlistId: el.dataset.playlist || '' }); return; }
@@ -3568,6 +4037,7 @@ function wireStaticUi() {
     else if (action === 'allow-local') allowLocal(el.dataset.src);
     else if (action === 'connect') reconnect(el.dataset.account || '');
     else if (action === 'settings') openSettings();
+    else if (action === 'fullscreen') toggleFullscreen();
     else if (action === 'collection') openCollectionMenu(el.dataset.kind, el.dataset.id);
     else if (action === 'dash-toggle') withAuth(() => player.toggle());
     else if (action === 'dash-next') withAuth(() => player.next());
@@ -3648,6 +4118,18 @@ function wireStaticUi() {
     openUpload(r.name === 'album' && lib?.albumsById[r.id] ? lib.albumsById[r.id].folderId : undefined);
   });
   $('#settings-btn').addEventListener('click', () => openSettings());
+  $('#fs-btn').addEventListener('click', toggleFullscreen);
+  $('#np-fs').addEventListener('click', toggleFullscreen);
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, updateFullscreenButtons);
+  updateFullscreenButtons();
+  // F: full screen (not while typing).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'f' && e.key !== 'F') return;
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+    if (!fullscreenSupported() || $('#app').hidden) return;
+    e.preventDefault();
+    toggleFullscreen();
+  });
   $('#cover-input').addEventListener('change', (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';

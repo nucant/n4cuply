@@ -2,7 +2,7 @@
 // 1) Caches the app files so it opens fast (and offline).
 // 2) Forwards "stream/<fileId>" requests to Drive with the token, so songs
 //    start without a full download and seeking works.
-const CACHE = 'n4cuply-v29';
+const CACHE = 'n4cuply-v31';
 const SHELL = [
   './',
   'index.html',
@@ -24,6 +24,9 @@ const SHELL = [
   'js/tagwrite.js',
   'js/artists.js',
   'js/analyze.js',
+  'js/family.js',
+  'js/dsp.js',
+  'admin.html',
   'version.json',
   'manifest.webmanifest',
   'icons/icon.svg',
@@ -31,6 +34,8 @@ const SHELL = [
   'icons/icon-512.png',
 ];
 const DRIVE = 'https://www.googleapis.com/drive/v3/files/';
+// Family members stream through the N4cuply server ("b" in the stream address).
+const SERVER_RE = /^https:\/\/[\w.-]+\.workers\.dev\/drive\/v3$/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
@@ -84,7 +89,9 @@ async function stream(request, url, rawId) {
 
   let upstream;
   try {
-    upstream = await fetch(DRIVE + encodeURIComponent(id) + '?alt=media', { headers });
+    const base = url.searchParams.get('b');
+    const files = base && SERVER_RE.test(base) ? `${base}/files/` : DRIVE;
+    upstream = await fetch(files + encodeURIComponent(id) + '?alt=media', { headers });
   } catch (e) {
     return new Response('network error', { status: 504 });
   }

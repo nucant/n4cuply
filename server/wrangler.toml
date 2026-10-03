@@ -1,0 +1,16 @@
+name = "n4cuply-api"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+preview_urls = false
+
+[vars]
+GOOGLE_CLIENT_ID = "633971369106-t22mm12eo275lbsbs5ie95m32q6or3d5.apps.googleusercontent.com"
+ADMIN_EMAIL = "swarnadipchakraborty3@gmail.com"
+ROOT_FOLDER = "1rnGS1wM7Wv7ug9uwyYmjEnJMIkME0hWF"
+APP_ORIGINS = "https://nucant.github.io,http://localhost:8080"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "n4cuply-family"
+database_id = "c94f0177-6930-46e4-91db-17e3097ee222"

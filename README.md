@@ -50,6 +50,20 @@ Audience → Test users must include every Gmail you sign in with (each extra ac
 
 Uploading asks once for permission to add files to your Drive; normal playback only uses read-only access.
 
+## Family accounts
+
+Family members sign in with a username and password, no Google account, and can only listen. The admin (`adminEmail` in `config.js`) signs in with Google as before and manages them in `admin.html` (Settings → Family members): approve requests, add people, turn accounts off, set new passwords.
+
+The server is a Cloudflare Worker in [`server/`](server/) with a D1 database (`schema.sql`). Passwords are stored only as PBKDF2 hashes. It reads the admin's Drive for family members, read-only and only inside the music folder.
+
+One-time setup:
+1. Google Auth Platform → Clients → your client → **Authorised redirect URIs**: add `https://n4cuply-api.nucant.workers.dev/auth/google/callback`.
+2. Copy the client's **Client secret**, then in `server/`: `npx wrangler secret put GOOGLE_CLIENT_SECRET` and paste it (it never goes in the code).
+3. Google Auth Platform → Audience → **Publish app**. In Testing mode Google ends the Drive link after 7 days.
+4. Open `admin.html` → **Link Drive**.
+
+Deploy server changes with `npx wrangler deploy` in `server/`.
+
 ## Files
 
 | File | Purpose |
@@ -57,6 +71,8 @@ Uploading asks once for permission to add files to your Drive; normal playback o
 | `index.html`, `style.css` | Screens and design |
 | `app.js` | UI: library, Now Playing, sheets, settings, upload |
 | `js/auth.js` | Google sign-in |
+| `js/family.js`, `admin.html` | Family sign-in and the admin portal |
+| `server/` | Family server (Cloudflare Worker + D1) |
 | `js/drive.js` | Drive API: list, read, upload |
 | `js/meta.js` | Tag and audio-format parser |
 | `js/sources.js` | Drive and PC sources, reading files from either |

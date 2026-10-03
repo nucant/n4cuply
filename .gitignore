@@ -6,3 +6,10 @@ Thumbs.db
 # Local working files (APKs, references) - never pushed
 Working/
 *.apk
+
+# Cloudflare Wrangler cache (server/)
+.wrangler/
+
+# Never push: Google client secret downloads and installers
+client_secret*.json
+*.exe

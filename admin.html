@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0f">
+  <meta name="robots" content="noindex, nofollow">
+  <title>N4cuply Admin</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    body { overflow-y: auto; }
+    .admin { max-width: 720px; margin: 0 auto; padding: calc(20px + env(safe-area-inset-top, 0px)) 16px 60px; }
+    .admin-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .admin-head img { border-radius: 10px; }
+    .admin-head h1 { font-size: clamp(26px, 6vw, 34px); font-weight: 800; letter-spacing: -.03em; margin: 0; flex: 1; }
+    .admin .info-group { margin-top: 16px; }
+    .admin .set-row > span { flex: 1; }
+    .admin .set-row small { color: var(--text-3); font-size: 13px; overflow-wrap: anywhere; }
+    .row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+    .status { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--text-3); margin-left: 6px; vertical-align: 2px; }
+    .status.approved { color: #3ee07a; border-color: rgba(62, 224, 122, .4); }
+    .status.pending { color: #ffc65c; border-color: rgba(255, 198, 92, .4); }
+    .status.disabled { color: var(--danger); border-color: rgba(255, 122, 112, .4); }
+    .admin-form { display: grid; gap: 10px; padding: 6px 14px 14px; }
+    .admin-form .set-input { margin-top: 0; }
+    .admin-form .pill-btn { justify-self: start; }
+    .pw-form { display: flex; gap: 6px; width: 100%; margin-top: 8px; }
+    .pw-form .set-input { margin-top: 0; height: 36px; }
+    .msg { margin: 14px 2px 0; font-size: 14px; }
+    .msg.ok { color: #3ee07a; }
+    .msg.err { color: var(--danger); }
+    .empty { padding: 12px 14px 14px; color: var(--text-3); font-size: 14px; }
+    .gate { text-align: center; display: grid; gap: 14px; justify-items: center; padding: 60px 0; }
+    @media (max-width: 520px) {
+      .admin .set-row { flex-direction: column; align-items: stretch; }
+      .row-actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="admin">
+    <div class="admin-head">
+      <img src="icons/icon.svg" alt="" width="40" height="40">
+      <h1>Family members</h1>
+      <a class="pill-btn small" href="./">Back to app</a>
+    </div>
+    <p id="msg" class="msg" role="status" hidden></p>
+    <div id="root"><p class="empty">Loading…</p></div>
+  </main>
+
+<script type="module">
+// Admin portal: only the admin's Google account gets past the server's check.
+import { CONFIG } from './config.js';
+import { initAuth, signIn, accessToken, primaryAccount, isAdmin } from './js/auth.js';
+import { adminApi } from './js/family.js';
+import { parseFolderInput } from './js/settings.js';
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const when = (ms) => (ms ? new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'never');
+
+let users = [];
+let status = null;
+
+function say(text, ok = true) {
+  const el = $('#msg');
+  el.textContent = text;
+  el.className = `msg ${ok ? 'ok' : 'err'}`;
+  el.hidden = !text;
+}
+
+const token = () => accessToken(primaryAccount());
+const api = (path, opts) => adminApi(path, token(), opts);
+
+function gate(text) {
+  $('#root').innerHTML = `<div class="gate">
+    <p>${esc(text)}</p>
+    <button class="pill-btn light" type="button" data-act="signin">Sign in with Google (${esc(CONFIG.adminEmail)})</button>
+  </div>`;
+}
+
+async function load() {
+  if (!isAdmin() || !token()) { gate('Sign in with the admin Google account to manage family members.'); return; }
+  try {
+    [status, { users }] = await Promise.all([api('/api/admin/status'), api('/api/admin/users')]);
+    render();
+  } catch (e) {
+    if (e.status === 401) gate('Your Google sign-in expired. Sign in again.');
+    else if (e.status === 403) gate('Only the admin can open this page.');
+    else $('#root').innerHTML = `<p class="msg err">${esc(e.message)}</p>`;
+  }
+}
+
+function userRow(u) {
+  const btn = (act, label, cls = '') => `<button class="pill-btn small ${cls}" type="button" data-act="${act}" data-id="${u.id}">${label}</button>`;
+  const actions = u.status === 'pending'
+    ? btn('approve', 'Approve', 'light') + btn('delete', 'Reject', 'danger')
+    : (u.status === 'approved' ? btn('disable', 'Turn off') : btn('enable', 'Turn on', 'light'))
+      + btn('password', 'New password') + btn('delete', 'Delete', 'danger');
+  const sub = u.status === 'pending' ? `Asked ${when(u.createdAt)}` : `Last played ${when(u.lastLogin)}`;
+  return `<div class="set-row" data-row="${u.id}">
+    <span><b>${esc(u.name || u.username)}<span class="status ${u.status}">${u.status === 'disabled' ? 'off' : u.status}</span></b>
+      <small>@${esc(u.username)} · ${esc(sub)}</small></span>
+    <span class="row-actions">${actions}</span>
+  </div>`;
+}
+
+function render() {
+  const pending = users.filter((u) => u.status === 'pending');
+  const members = users.filter((u) => u.status !== 'pending');
+  $('#root').innerHTML = `
+    <div class="info-group set-group">
+      <h4>Music for the family</h4>
+      <div class="set-row">
+        <span><b>${status.driveLinked ? 'Linked' : 'Not linked yet'}</b>
+          <small>${status.driveLinked ? `Family members play from ${esc(status.driveEmail)}'s Drive, read-only.` : 'Link your Drive once so family members can play your music. They never need Google.'}</small></span>
+        <span class="row-actions"><button class="pill-btn small ${status.driveLinked ? '' : 'light'}" type="button" data-act="link">${status.driveLinked ? 'Link again' : 'Link Drive'}</button></span>
+      </div>
+      <form class="set-row col" data-form="folder">
+        <span><b>Music folder</b><small>Family members can only play songs inside this Drive folder. Now: ${esc(status.rootFolder)}</small></span>
+        <span class="pw-form"><input class="set-input" id="folder" type="text" placeholder="Paste a Drive folder link" autocomplete="off"><button class="pill-btn small" type="submit">Use</button></span>
+      </form>
+    </div>
+
+    <div class="info-group set-group">
+      <h4>Waiting for approval${pending.length ? ` · ${pending.length}` : ''}</h4>
+      ${pending.map(userRow).join('') || '<p class="empty">No new requests. People ask from the sign-in screen with "Ask for an account".</p>'}
+    </div>
+
+    <div class="info-group set-group">
+      <h4>Members · ${members.length}</h4>
+      ${members.map(userRow).join('') || '<p class="empty">No members yet.</p>'}
+    </div>
+
+    <div class="info-group set-group">
+      <h4>Add someone</h4>
+      <form class="admin-form" data-form="add" autocomplete="off">
+        <input class="set-input" id="add-name" type="text" placeholder="Name" maxlength="60" required>
+        <input class="set-input" id="add-user" type="text" placeholder="Username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" pattern="[A-Za-z0-9._\\-]{3,32}" required>
+        <input class="set-input" id="add-pass" type="text" placeholder="Password (6+ characters)" minlength="6" required>
+        <button class="pill-btn small light" type="submit">Add member</button>
+        <p class="info-note" style="margin:0">They can sign in right away. Tell them their username and password.</p>
+      </form>
+    </div>`;
+}
+
+async function act(action, id, data) {
+  try {
+    if (action === 'delete') await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+    else await api(`/api/admin/users/${id}`, { method: 'POST', data: { action, ...data } });
+    const u = users.find((x) => x.id === id);
+    const name = u?.name || u?.username || 'User';
+    say({ approve: `${name} can sign in now.`, enable: `${name} is turned on.`, disable: `${name} is turned off and signed out.`, delete: `${name} was removed.`, password: `New password saved. ${name} was signed out everywhere.` }[action]);
+    await load();
+  } catch (e) {
+    say(e.message, false);
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const id = Number(el.dataset.id);
+  const action = el.dataset.act;
+  if (action === 'signin') {
+    signIn({ account: CONFIG.adminEmail }).then(load).catch((err) => say(err.message, false));
+  } else if (action === 'link') {
+    const back = location.origin + location.pathname;
+    location.href = `${CONFIG.apiBase}/auth/google/start?back=${encodeURIComponent(back)}`;
+  } else if (action === 'delete') {
+    const u = users.find((x) => x.id === id);
+    if (confirm(`Remove ${u?.name || u?.username}? They won't be able to sign in.`)) act('delete', id);
+  } else if (action === 'password') {
+    const row = el.closest('[data-row]');
+    if (row.querySelector('.pw-form')) return;
+    row.querySelector('span').insertAdjacentHTML('beforeend', `<form class="pw-form" data-form="password" data-id="${id}">
+      <input class="set-input" type="text" placeholder="New password (6+)" minlength="6" required autocomplete="off">
+      <button class="pill-btn small light" type="submit">Save</button></form>`);
+    row.querySelector('.pw-form input').focus();
+  } else {
+    act(action, id);
+  }
+});
+
+document.addEventListener('submit', async (e) => {
+  const form = e.target.closest('[data-form]');
+  if (!form) return;
+  e.preventDefault();
+  const kind = form.dataset.form;
+  if (kind === 'password') {
+    act('password', Number(form.dataset.id), { password: form.querySelector('input').value });
+  } else if (kind === 'add') {
+    try {
+      await api('/api/admin/users', { method: 'POST', data: { name: $('#add-name').value.trim(), username: $('#add-user').value.trim(), password: $('#add-pass').value } });
+      say(`${$('#add-name').value.trim()} was added. They can sign in now.`);
+      await load();
+    } catch (err) {
+      say(err.message, false);
+    }
+  } else if (kind === 'folder') {
+    const folder = parseFolderInput($('#folder').value);
+    if (!folder) { say("That doesn't look like a Drive folder link.", false); return; }
+    try {
+      await api('/api/admin/settings', { method: 'POST', data: { rootFolder: folder } });
+      say('Music folder saved.');
+      await load();
+    } catch (err) {
+      say(err.message, false);
+    }
+  }
+});
+
+// Coming back from linking Drive.
+const back = new URLSearchParams(location.search);
+const linked = back.get('drive');
+if (linked) {
+  const why = back.get('why') ? ` (${back.get('why')})` : '';
+  say({ ok: 'Drive linked. Family members can play your music now.', 'wrong-account': `Use ${CONFIG.adminEmail} when linking Drive.`, error: `Drive wasn't linked. Try again.${why}` }[linked] || '', linked === 'ok');
+  history.replaceState(null, '', location.pathname);
+}
+
+initAuth().then(load).catch((e) => say(e.message, false));
+</script>
+</body>
+</html>

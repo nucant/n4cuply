@@ -1,7 +1,8 @@
-// Google Drive API (v3).
+// Google Drive API (v3). Family members read the same API through the N4cuply
+// server (read-only), so the address comes from driveApiBase().
 import { accessToken } from './auth.js';
+import { driveApiBase } from './family.js';
 
-export const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const FILE_FIELDS = 'id,name,mimeType,size,md5Checksum,modifiedTime,parents';
@@ -26,7 +27,7 @@ async function request(url, init = {}, account) {
   return res;
 }
 
-function withParams(path, params, base = API) {
+function withParams(path, params, base = driveApiBase()) {
   const url = new URL(base + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url;
@@ -68,7 +69,7 @@ export async function listChildren(folderId, account) {
 }
 
 export function mediaUrl(id) {
-  return `${API}/files/${encodeURIComponent(id)}?alt=media`;
+  return `${driveApiBase()}/files/${encodeURIComponent(id)}?alt=media`;
 }
 
 export async function fetchBlob(id, account, signal) {

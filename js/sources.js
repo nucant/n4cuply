@@ -4,6 +4,7 @@
 import { CONFIG } from '../config.js';
 import { accessToken, primaryAccount } from './auth.js';
 import { fetchBlob, fetchRange, uploadFile, updateFileResumable } from './drive.js';
+import { isFamily, driveApiBase } from './family.js';
 import { idbGet, idbPut, idbDelete } from './store.js';
 import { settings } from './settings.js';
 
@@ -26,11 +27,13 @@ function save() {
 }
 
 export function defaultSource() {
-  return { id: 'default', kind: 'drive', folderId: settings.folderId || CONFIG.driveFolderId, account: '', name: '', isDefault: true };
+  // Family members get the admin's music folder through the server; nothing else.
+  const folderId = isFamily() ? CONFIG.driveFolderId : settings.folderId || CONFIG.driveFolderId;
+  return { id: 'default', kind: 'drive', folderId, account: '', name: '', isDefault: true };
 }
 
 export function listSources() {
-  return [defaultSource(), ...extra];
+  return isFamily() ? [defaultSource()] : [defaultSource(), ...extra];
 }
 
 export function sourceById(id) {
@@ -188,6 +191,7 @@ export function playTarget(track) {
   const blob = () => readBlob(ref);
   if (navigator.serviceWorker?.controller) {
     const q = new URLSearchParams({ t: token, s: String(track.size || 0), m: track.mime || 'audio/mpeg' });
+    if (isFamily()) q.set('b', driveApiBase());
     return { mode: 'stream', url: `stream/${encodeURIComponent(track.id)}?${q}`, blob };
   }
   return { mode: 'blob', blob };

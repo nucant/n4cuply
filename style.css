@@ -107,6 +107,23 @@ svg .fill { fill: currentColor; stroke: none; }
 .login-card .pill-btn { margin-top: 12px; }
 .login-note { font-size: 13px; max-width: 32ch; }
 .login-error { color: var(--danger) !important; font-size: 14px; }
+.login-form { display: grid; gap: 10px; width: min(340px, 100%); justify-items: stretch; }
+.login-form .set-input { height: 48px; font-size: 16px; margin-top: 0; }
+.login-form .pill-btn { margin-top: 4px; justify-content: center; }
+.login-form .text-btn { justify-self: center; }
+.login-ok { color: var(--text) !important; }
+.login-admin { margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--line); width: min(340px, 100%); display: grid; justify-items: center; }
+.login-admin .text-btn { justify-self: center; color: var(--text-3); }
+
+/* Family members only listen: hide everything that changes the library. */
+.family #upload-btn,
+.family [data-action="upload"],
+.family [data-action="organize"],
+.family [data-action="fix-track"],
+.family [data-action="edit-track"],
+.family [data-action="save-lyrics"],
+.family [data-song="fix"],
+.family [data-song="edit"] { display: none !important; }
 
 /* ---------- layout ---------- */
 .app { min-height: 100%; }
@@ -1629,3 +1646,117 @@ body.np-narrow .now:not(.style-default) .np-body { margin-top: 10px; }
 @media (max-height: 640px) {
   body.np-narrow .np-lyric { display: none; }
 }
+
+/* ---------- v2.12: Settings page, sound, stats ---------- */
+.set-page { max-width: 760px; margin: 0 auto; padding-bottom: 24px; }
+.set-head h1 { font-size: clamp(32px, 7vw, 44px); font-weight: 800; letter-spacing: -.035em; margin: 18px 0 12px; }
+.set-tabs {
+  position: sticky; top: calc(64px + var(--safe-t)); z-index: 5; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  padding: 8px 0; margin: 0 -16px; padding-inline: 16px; background: linear-gradient(var(--bg) 70%, transparent);
+}
+body.has-sidebar .set-tabs, body.on-dash .set-tabs { top: var(--safe-t); }
+.set-tabs::-webkit-scrollbar { display: none; }
+.set-tabs button {
+  flex: none; height: 36px; padding: 0 16px; border-radius: 999px; background: rgba(255, 255, 255, .08);
+  font-weight: 600; font-size: 14px; color: var(--text-2); transition: background .15s ease, color .15s ease;
+}
+.set-tabs button:hover { background: rgba(255, 255, 255, .14); }
+.set-tabs button.on { background: #fff; color: #111; }
+.set-body .info-group:first-child { margin-top: 4px; }
+.set-page .set-row small { color: var(--text-3); }
+.empty-note { padding: 4px 14px 16px; margin: 0; color: var(--text-2); font-size: 14px; }
+
+/* sliders */
+.slider-head { display: flex !important; justify-content: space-between; align-items: baseline; gap: 10px; }
+.slider-head output { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 14px; }
+.slider-hint { display: block; margin-top: -2px; }
+.set-range, .eq-slider { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; margin: 0; }
+.set-range { width: 100%; height: 28px; }
+.set-range::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .18); }
+.set-range::-moz-range-track { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .18); }
+.set-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .4); }
+.set-range::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #fff; }
+
+/* equalizer */
+.eq-presets { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 14px 10px; }
+.chip { height: 32px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, .08); font-size: 13.5px; font-weight: 600; color: var(--text-2); }
+.chip.on { background: var(--tint-soft); color: #111; }
+.chip.static { display: inline-flex; align-items: center; cursor: default; }
+.eq { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 2px; padding: 8px 10px 14px; border-top: 1px solid var(--line); }
+.eq.off, .eq-presets.off { opacity: .45; }
+.eq-band { display: grid; justify-items: center; gap: 6px; }
+.eq-band output { font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--text-2); min-height: 16px; }
+.eq-band small { font-size: 11px; color: var(--text-3); }
+.eq-slider { writing-mode: vertical-lr; direction: rtl; width: 28px; height: 150px; }
+.eq-slider::-webkit-slider-runnable-track { width: 4px; border-radius: 4px; background: rgba(255, 255, 255, .18); }
+.eq-slider::-moz-range-track { width: 4px; border-radius: 4px; background: rgba(255, 255, 255, .18); }
+.eq-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 14px; margin-left: -9px; border-radius: 7px; background: var(--tint-soft); box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
+.eq-slider::-moz-range-thumb { width: 22px; height: 14px; border: 0; border-radius: 7px; background: var(--tint-soft); }
+.eq-slider:disabled { cursor: default; }
+@media (max-width: 420px) { .eq { padding-inline: 4px; } .eq-slider { height: 130px; } .eq-band small { font-size: 10px; } }
+
+/* accent colors */
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; background: hsl(var(--h) var(--s) 62%); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .25); transition: transform .12s ease; }
+.swatch:hover { transform: scale(1.08); }
+.swatch.on { outline: 3px solid #fff; outline-offset: 3px; }
+
+/* stats */
+.stat-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 4px; }
+.stat { display: grid; gap: 2px; padding: 16px 14px; border-radius: 14px; background: rgba(255, 255, 255, .06); }
+.stat b { font-size: clamp(18px, 4.6vw, 26px); font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat small { color: var(--text-3); font-size: 13px; }
+.week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 140px; padding: 8px 14px 14px; }
+.week-day { display: grid; grid-template-rows: 1fr auto; gap: 6px; height: 100%; justify-items: center; }
+.week-day span { align-self: end; width: 100%; max-width: 34px; border-radius: 6px 6px 3px 3px; background: rgba(255, 255, 255, .22); }
+.week-day.today span { background: var(--tint-soft); }
+.week-day small { color: var(--text-3); font-size: 12px; }
+.stat-row { width: 100%; text-align: left; cursor: pointer; }
+.stat-row:hover { background: rgba(255, 255, 255, .04); }
+.stat-row > span:first-child { min-width: 0; }
+.stat-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-bar { flex: 0 0 30%; height: 6px; border-radius: 6px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.stat-bar i { display: block; height: 100%; border-radius: 6px; background: var(--tint-soft); }
+
+/* black (AMOLED) theme */
+body.theme-amoled { --bg: #000; --bg-2: #0a0a0a; --bg-3: #121212; --glass: rgba(0, 0, 0, .72); background: #000; }
+body.theme-amoled .info-group, body.theme-amoled .stat { background: rgba(255, 255, 255, .05); }
+
+/* ---------- v2.12: running cassette loading bar ---------- */
+.run-track { position: relative; height: 6px; margin: 44px 27px 4px 0; border-radius: 6px; background: rgba(255, 255, 255, .1); }
+.run-fill { position: absolute; inset: 0 auto 0 0; border-radius: 6px; background: linear-gradient(90deg, var(--tint-soft), #ff8a3d); transition: width .35s var(--ease); }
+.run-pos { position: absolute; bottom: 2px; width: 0; transition: left .35s var(--ease); }
+.runner { position: absolute; bottom: 0; left: -27px; width: 54px; height: 52px; animation: rbBob .32s ease-in-out infinite alternate; }
+.rb { width: 54px; height: 52px; overflow: visible; display: block; stroke: none; }
+.rb-leg path { stroke: #ffe2c8; stroke-width: 3; stroke-linecap: round; fill: none; }
+.rb-leg ellipse { fill: #ff8a3d; stroke: #ffe2c8; stroke-width: 1.2; }
+.rb-leg-a { transform-origin: 17px 31px; animation: rbLeg .32s ease-in-out infinite alternate; }
+.rb-leg-b { transform-origin: 31px 31px; animation: rbLeg .32s ease-in-out infinite alternate-reverse; }
+.rb-reel { animation: spin .8s linear infinite; }
+.rb-eyes { transform-origin: 24px 12px; animation: rbBlink 3.4s infinite; }
+.rb-body { transform-origin: 24px 31px; animation: rbLean .32s ease-in-out infinite alternate; }
+.rb-note { position: absolute; left: -2px; bottom: 24px; font-size: 15px; color: var(--tint-soft); opacity: 0; animation: rbNote 1.5s ease-out infinite; pointer-events: none; }
+.rb-note.n2 { animation-delay: .5s; color: #ff8a3d; font-size: 15px; }
+.rb-note.n3 { animation-delay: 1s; }
+@keyframes rbBob { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+@keyframes rbLeg { from { transform: rotate(-28deg); } to { transform: rotate(28deg); } }
+@keyframes rbLean { from { transform: rotate(-3deg); } to { transform: rotate(4deg); } }
+@keyframes rbBlink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes rbNote { 0% { opacity: 0; transform: translate(0, 0) rotate(0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-34px, -26px) rotate(-20deg); } }
+/* Unknown length: the runner jogs back and forth, turning around at each end. */
+.run-track.loop .run-fill { width: 100% !important; opacity: .25; }
+.run-track.loop .run-pos { transition: none; animation: rbAcross 4.4s ease-in-out infinite; }
+.run-track.loop .runner { animation: rbBob .32s ease-in-out infinite alternate, rbTurn 4.4s step-end infinite; }
+@keyframes rbAcross { 0%, 100% { left: 4%; } 50% { left: 96%; } }
+@keyframes rbTurn { 0% { scale: 1 1; } 50% { scale: -1 1; } }
+.loader-run { width: min(320px, 80%); margin: 0 auto 10px; }
+.loader-run .run-track { margin-right: 0; }
+.scan .run-track, .org-progress .run-track { margin-top: 40px; }
+@media (prefers-reduced-motion: reduce) {
+  .runner, .rb-leg-a, .rb-leg-b, .rb-reel, .rb-eyes, .rb-body, .run-track.loop .run-pos { animation: none !important; }
+  .rb-note { display: none; }
+}
+/* ---------- v2.12: Library tab record spins while music plays ---------- */
+.vinyl-ico { animation: spin 1.8s linear infinite paused; transform-origin: 50% 50%; }
+body.is-playing .vinyl-ico { animation-play-state: running; }
+@media (prefers-reduced-motion: reduce) { .vinyl-ico { animation: none; } }
